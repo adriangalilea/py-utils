@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# uv / Python project
+.venv/
+uv.lock
+.python-version
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/

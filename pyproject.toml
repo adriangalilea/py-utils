@@ -1,0 +1,13 @@
+[project]
+name = "py-utils"
+version = "0.1.0"
+description = "Generic Python utilities (DX-first terminal logger, number/percentage/currency formatting). Python 3.12+."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    { name = "Adrian Galilea", email = "adriangalilea@gmail.com" },
+]
+dependencies = [
+    "rich>=14.1.0",
+    "ruff>=0.13.2",
+]
