@@ -1,6 +1,14 @@
-# py-utils
+# adrian-utils
 
-Generic Python utilities — DX-first terminal logger, number/percentage/currency formatting. Python 3.12+.
+Generic Python utilities — DX-first terminal logger, XDG directories, number/percentage/currency formatting. Python 3.12+.
+
+## Install
+
+```bash
+pip install adrian-utils
+# or with uv
+uv add adrian-utils
+```
 
 ## Install (local dev)
 
@@ -11,7 +19,12 @@ uv add -e .
 ## Usage
 
 ```python
-from py_utils import log, usd, percentage
+from py_utils import log, xdg, usd, percentage
+
+# XDG directories
+config_file = xdg.config / "myapp" / "config.toml"
+data_file = xdg.data / "myapp" / "database.db"
+cache_dir = xdg.cache / "myapp"
 
 # Narration
 log.info("Connected to postgres:5432")
