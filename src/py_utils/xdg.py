@@ -78,8 +78,14 @@ class _XDG:
         return Path(env_path)
 
 
-# Module-level instance for clean imports
+# Module-level properties for clean imports
 # Usage: from py_utils import xdg; xdg.config
-xdg = _XDG()
+_xdg_instance = _XDG()
 
-__all__ = ["xdg"]
+config = _xdg_instance.config
+data = _xdg_instance.data
+cache = _xdg_instance.cache
+state = _xdg_instance.state
+runtime = _xdg_instance.runtime
+
+__all__ = ["config", "data", "cache", "state", "runtime"]

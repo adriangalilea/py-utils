@@ -1,6 +1,6 @@
 [project]
 name = "adrian-utils"
-version = "0.1.1"
+version = "0.1.2"
 description = "Generic Python utilities (DX-first terminal logger, XDG directories, number/percentage/currency formatting). Python 3.12+."
 readme = "README.md"
 requires-python = ">=3.12"
