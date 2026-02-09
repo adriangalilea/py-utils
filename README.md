@@ -74,8 +74,12 @@ uv run ruff check src
 uv run ruff format src
 ```
 
+## No offensive module
+
+Unlike [go-utils](https://github.com/adriangalilea/go-utils) and [ts-utils](https://github.com/adriangalilea/ts-utils), py-utils has no offensive programming module. Python's exception model is already offensive by default — functions raise with full stack traces, uncaught exceptions crash the process, and `assert` is a language keyword. Go and TS need offensive primitives because their error patterns (`(val, err)` tuples, `try/catch`, `process.exit`) encourage silent failure. Python doesn't have this problem.
+
 ## TODO
 
 - Port the KEV environment manager (see `ts-utils/src/platform/kev.ts` and `go-utils/kev.go`).
 
-Part of the utils suite by Adrian Galilea.
+Part of the utils suite by Adrian Galilea: **[go-utils](https://github.com/adriangalilea/go-utils)**, **[ts-utils](https://github.com/adriangalilea/ts-utils)**, **py-utils**.
