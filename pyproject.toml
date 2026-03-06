@@ -1,7 +1,7 @@
 [project]
 name = "adrian-utils"
-version = "0.1.2"
-description = "Generic Python utilities (DX-first terminal logger, XDG directories, number/percentage/currency formatting). Python 3.12+."
+version = "0.2.0"
+description = "Generic Python utilities — KEV environment manager, XDG directories, DX-first terminal logger, number/percentage/currency formatting. Python 3.12+."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [

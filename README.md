@@ -1,6 +1,6 @@
 # adrian-utils
 
-Generic Python utilities — DX-first terminal logger, XDG directories, number/percentage/currency formatting. Python 3.12+.
+Generic Python utilities — KEV environment manager, XDG directories, DX-first terminal logger, number/percentage/currency formatting. Python 3.12+.
 
 ## Install
 
@@ -19,11 +19,20 @@ uv add -e .
 ## Usage
 
 ```python
-from py_utils import log, xdg, usd, percentage
+from py_utils import log, kev, xdg, usd, percentage
+
+# KEV - Redis-style env vars
+api_key = kev.must_get("API_KEY")      # Raises if not found
+api_key = kev.get("API_KEY", "dev")    # With default
+port = kev.int("PORT", 8080)           # Type conversion
+kev.set("DEBUG", "true")               # Memory only (fast)
+kev.get("os:PATH")                     # Direct from OS
+kev.get(".env:SECRET")                 # Direct from .env
 
 # XDG directories
 config_file = xdg.config / "myapp" / "config.toml"
 data_file = xdg.data / "myapp" / "database.db"
+state_dir = xdg.state / "notify"
 cache_dir = xdg.cache / "myapp"
 
 # Narration
@@ -48,6 +57,60 @@ usd(1234.56)                  # "+$1,234.56" (color and + by default)
 usd(1234.56, signed=False)    # "$1,234.56" (no leading +)
 percentage(15.234)            # "+15.2%"
 percentage(15.234, signed=False)  # "15.2%"
+```
+
+### KEV
+
+Redis-style KV store for environment variables. Searches memory → `os.environ` → `.env` files, caches results.
+
+```python
+from py_utils import kev
+
+# Basics
+api_key = kev.must_get("API_KEY")       # Raises if not found
+api_key = kev.get("API_KEY", "dev")     # With default
+port = kev.int("PORT", 8080)            # Type conversion
+debug = kev.bool("DEBUG", False)        # true/1/yes/on → True
+rate = kev.float("RATE", 0.5)           # Float conversion
+kev.set("APP_NAME", "myapp")            # Memory only (fast)
+
+# Namespaced access (skip the search chain)
+kev.get("os:PATH")                      # ONLY from OS
+kev.get(".env:SECRET")                  # ONLY from .env file
+kev.set("os:DEBUG", "true")             # Write directly to OS
+kev.set(".env:API_KEY", "secret")       # Update .env file
+
+# Source tracking
+value, source = kev.get_with_source("API_KEY")  # ("secret", ".env")
+kev.source_of("API_KEY")                        # ".env" or "os" or "default"
+
+# Customize search order
+kev.source.remove("os")                 # Ignore OS env (perfect for tests!)
+kev.source.add(".env.local")            # Add more fallbacks
+kev.source.set(".env.test")             # Replace entirely
+
+# Pattern matching
+kev.keys("API_*")                       # Find all API_ keys
+kev.has("API_KEY")                      # Check if configured
+kev.clear("TEMP_*")                     # Clear from memory
+
+# Debug mode — shows the full lookup chain
+kev.debug = True
+kev.get("DATABASE_URL")                 # Prints each source checked
+```
+
+### XDG
+
+XDG Base Directory paths — reads env vars set by [xdg-dirs](https://github.com/adriangalilea/xdg-dirs), falls back to spec defaults:
+
+```python
+from py_utils import xdg
+
+xdg.config / "myapp" / "config.toml"    # ~/.config/myapp/config.toml
+xdg.data / "myapp" / "data.db"          # ~/.local/share/myapp/data.db
+xdg.state / "notify"                    # ~/.local/state/notify
+xdg.cache / "myapp"                     # ~/.cache/myapp
+xdg.runtime / "myapp"                   # $XDG_RUNTIME_DIR/myapp
 ```
 
 Colors automatically disable when stdout is not a TTY. To override:
@@ -77,9 +140,5 @@ uv run ruff format src
 ## No offensive module
 
 Unlike [go-utils](https://github.com/adriangalilea/go-utils) and [ts-utils](https://github.com/adriangalilea/ts-utils), py-utils has no offensive programming module. Python's exception model is already offensive by default — functions raise with full stack traces, uncaught exceptions crash the process, and `assert` is a language keyword. Go and TS need offensive primitives because their error patterns (`(val, err)` tuples, `try/catch`, `process.exit`) encourage silent failure. Python doesn't have this problem.
-
-## TODO
-
-- Port the KEV environment manager (see `ts-utils/src/platform/kev.ts` and `go-utils/kev.go`).
 
 Part of the utils suite by Adrian Galilea: **[go-utils](https://github.com/adriangalilea/go-utils)**, **[ts-utils](https://github.com/adriangalilea/ts-utils)**, **py-utils**.

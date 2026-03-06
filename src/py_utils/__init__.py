@@ -1,14 +1,11 @@
 """
 py_utils: Generic Python utilities (Python 3.12+)
 
-Currently includes:
-- TTY-focused logger with tasks/steps/indentation, symbols, colors
-- Number/percentage formatting helpers
-- Currency formatting utilities with optimal decimals
-
-This package intentionally avoids stdlib logging and JSON outputs.
-It focuses on crisp terminal output for interactive use and CI-friendly
-plain text when not attached to a TTY.
+- KEV: Redis-style KV store for environment variables
+- XDG: Base Directory paths with spec-compliant fallbacks
+- Logger: TTY-focused with tasks/steps/indentation, symbols, colors
+- Format: Number/percentage formatting helpers
+- Currency: Formatting utilities with optimal decimals
 """
 
 from .log import (
@@ -33,6 +30,8 @@ from .format import (
     color_enabled,
 )
 
+from .kev import kev, Kev
+
 from .currency import (
     get_symbol,
     get_optimal_decimals,
@@ -48,6 +47,9 @@ from .currency import (
 )
 
 __all__ = [
+    # kev
+    "kev",
+    "Kev",
     # logger
     "log",
     "Logger",
