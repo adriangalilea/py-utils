@@ -29,8 +29,8 @@ _STORE_DIR = xdg.state / "unseen"
 
 
 def unseen(namespace: str, items: Sequence[T], key: Callable[[T], str]) -> list[T]:
-    _STORE_DIR.mkdir(parents=True, exist_ok=True)
     store_path = _STORE_DIR / f"{namespace}.json"
+    store_path.parent.mkdir(parents=True, exist_ok=True)
 
     seen: set[str] = set(
         json.loads(store_path.read_text()) if store_path.exists() else []
