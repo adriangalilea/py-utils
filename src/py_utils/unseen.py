@@ -4,15 +4,18 @@ the ones you haven't seen before. Remembers across runs.
     messages = fetch_messages()
     new_messages = unseen("messages", messages, "id")
 
-    # 1st run: messages = [{"id": "1", "from": "alice"}, {"id": "2", "from": "bob"}]
-    #          new_messages = [{"id": "1", "from": "alice"}, {"id": "2", "from": "bob"}]
-    # 2nd run: messages = [{"id": "1", "from": "alice"}, {"id": "2", "from": "bob"}]
-    #          new_messages = []
-    # 3rd run: messages = [{"id": "1", ...}, {"id": "2", ...}, {"id": "3", "from": "bob"}]
-    #          new_messages = [{"id": "3", "from": "bob"}]
+    # 1st run:
+    #   messages     = [{"id": "1", "from": "alice", "text": "hi"}]
+    #   new_messages = [{"id": "1", "from": "alice", "text": "hi"}]
+    #
+    # 2nd run, no new message:
+    #   new_messages = []
+    #
+    # 3rd run, bob replied:
+    #   messages     = [{"id": "1", ...}, {"id": "2", "from": "bob", "text": "hey"}]
+    #   new_messages = [{"id": "2", "from": "bob", "text": "hey"}]
 
-Idempotent — safe to re-run.
-State: $XDG_STATE_HOME/unseen/{namespace}.json
+Saves state to: $XDG_STATE_HOME/unseen/{namespace}.json
 """
 
 import json
