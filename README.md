@@ -139,19 +139,17 @@ uv run ruff format src
 
 ### Unseen
 
-Persistent dedup filter — makes any script idempotent. Run it once or a thousand times, you only process each item once. Any scheduling works: manual, cron, a loop, whatever.
+Filters a sequence of dicts to only the ones you haven't seen before. Remembers across runs.
 
 ```python
 from py_utils import unseen
 
-# only notifies on NEW orders — safe to run on any schedule
-fresh = unseen("orders", all_orders, key=lambda o: o["id"])
-for o in fresh:
-    notify(o["summary"])
-# 1st run: 5 orders → notifies 5. 2nd run: same 5 → notifies 0. 3rd run: 7 → notifies 2.
+messages = fetch_messages()
+new_messages = unseen("messages", messages, "id")
+# First run → all messages. Second run → only new ones.
 ```
 
-State persists at `~/.local/state/unseen/{namespace}.json`.
+State: `$XDG_STATE_HOME/unseen/{name}.json` (defaults to `~/.local/state/unseen/`)
 
 ## No offensive module
 

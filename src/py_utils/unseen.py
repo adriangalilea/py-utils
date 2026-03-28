@@ -1,25 +1,17 @@
-"""Persistent dedup filter — "what's new since last time?"
+"""Filters a sequence of dicts to only the ones you haven't seen before.
+Remembers across runs. Safe to re-run on any schedule.
 
-Makes any script idempotent. Run it once or a thousand times,
-you only process each item once. Any scheduling works:
-manual, cron, a loop, whatever.
-
-    1st run: 5 orders exist  → returns 5
-    2nd run: same 5 orders   → returns 0
-    3rd run: 7 orders exist  → returns 2
-
-Usage:
     from py_utils import unseen
 
-    fresh = unseen("orders", all_orders, key=lambda o: o["id"])
-    for o in fresh:
-        notify(o["summary"])
+    messages = fetch_messages()
+    new_messages = unseen("messages", messages, "id")
+    # First run → all messages. Second run → only new ones.
 
-State persists at ~/.local/state/unseen/{namespace}.json
+State: $XDG_STATE_HOME/unseen/{namespace}.json
 """
 
 import json
-from typing import Callable, Sequence, TypeVar
+from typing import Sequence, TypeVar
 
 from . import xdg
 
@@ -28,7 +20,7 @@ T = TypeVar("T")
 _STORE_DIR = xdg.state / "unseen"
 
 
-def unseen(namespace: str, items: Sequence[T], key: Callable[[T], str]) -> list[T]:
+def unseen(namespace: str, items: Sequence[T], key: str) -> list[T]:
     store_path = _STORE_DIR / f"{namespace}.json"
     store_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -38,7 +30,7 @@ def unseen(namespace: str, items: Sequence[T], key: Callable[[T], str]) -> list[
 
     result: list[T] = []
     for item in items:
-        k = key(item)
+        k = str(item[key])  # type: ignore[index]
         if k not in seen:
             seen.add(k)
             result.append(item)
