@@ -139,17 +139,24 @@ uv run ruff format src
 
 ### Unseen
 
-Filters a sequence of dicts to only the ones you haven't seen before. Remembers across runs.
+"What's new since last time?" — filters a sequence of dicts to only the ones you haven't seen before. Remembers across runs.
 
 ```python
 from py_utils import unseen
 
 messages = fetch_messages()
 new_messages = unseen("messages", messages, "id")
-# First run → all messages. Second run → only new ones.
+
+# 1st run: messages = [{"id": "1", "from": "alice"}, {"id": "2", "from": "bob"}]
+#          new_messages = [{"id": "1", "from": "alice"}, {"id": "2", "from": "bob"}]
+# 2nd run: messages = [{"id": "1", "from": "alice"}, {"id": "2", "from": "bob"}]
+#          new_messages = []
+# 3rd run: messages = [{"id": "1", ...}, {"id": "2", ...}, {"id": "3", "from": "bob"}]
+#          new_messages = [{"id": "3", "from": "bob"}]
 ```
 
-State: `$XDG_STATE_HOME/unseen/{name}.json` (defaults to `~/.local/state/unseen/`)
+Idempotent — safe to re-run.
+State: `$XDG_STATE_HOME/unseen/{name}.json`
 
 ## No offensive module
 
