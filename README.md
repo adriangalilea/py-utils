@@ -137,6 +137,22 @@ uv run ruff check src
 uv run ruff format src
 ```
 
+### Unseen
+
+Persistent dedup filter — makes any script idempotent. Run it once or a thousand times, you only process each item once. Any scheduling works: manual, cron, a loop, whatever.
+
+```python
+from py_utils import unseen
+
+# only notifies on NEW orders — safe to run on any schedule
+fresh = unseen("orders", all_orders, key=lambda o: o["id"])
+for o in fresh:
+    notify(o["summary"])
+# 1st run: 5 orders → notifies 5. 2nd run: same 5 → notifies 0. 3rd run: 7 → notifies 2.
+```
+
+State persists at `~/.local/state/unseen/{namespace}.json`.
+
 ## No offensive module
 
 Unlike [go-utils](https://github.com/adriangalilea/go-utils) and [ts-utils](https://github.com/adriangalilea/ts-utils), py-utils has no offensive programming module. Python's exception model is already offensive by default — functions raise with full stack traces, uncaught exceptions crash the process, and `assert` is a language keyword. Go and TS need offensive primitives because their error patterns (`(val, err)` tuples, `try/catch`, `process.exit`) encourage silent failure. Python doesn't have this problem.

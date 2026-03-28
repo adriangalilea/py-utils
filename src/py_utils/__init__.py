@@ -32,6 +32,8 @@ from .format import (
 
 from .kev import kev, Kev
 
+from .unseen import unseen
+
 from .currency import (
     get_symbol,
     get_optimal_decimals,
@@ -47,6 +49,8 @@ from .currency import (
 )
 
 __all__ = [
+    # unseen
+    "unseen",
     # kev
     "kev",
     "Kev",
