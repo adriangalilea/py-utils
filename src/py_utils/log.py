@@ -1,3 +1,63 @@
+"""
+Terminal-first logger. TTY-aware, hierarchical, zero ceremony.
+
+No JSON, no stdlib logging, no k=v noise. Optimized for humans reading a
+terminal and for readable plain text when piped to a file or CI log.
+
+TTY vs non-TTY
+    TTY: colors, symbols, indentation, live spinners.
+    Non-TTY: plain text, no colors, no live updates, final summaries only.
+    Detected via sys.stdout.isatty(); overridable at runtime.
+
+Symbols
+    info  ℹ (blue)       success ✓ (green)    wait  ○ (bright white)
+    warn  ⚠ (yellow)     fail    ⨯ (red)      ready ▶ (green)
+    error ⨯ (red)        trace   » (magenta)  step  • (dim, indented)
+
+Levels vs status verbs
+    Levels filter: trace < debug < info < warn < error < fatal.
+    Status verbs express outcome: success, fail, event, wait, ready.
+    Levels are for filtering noise; verbs are how you think.
+
+Structure
+    task(title)    — context manager: logs start+end with duration, indents body.
+    section(title) — context manager: grouping without start/end, indents body.
+    step(msg)      — single indented bullet inside a task/section.
+    Hierarchies, not flat lines.
+
+Context without k=v
+    with_prefix("api")  → prints `[api]` before messages
+    tag("auth")         → prints `[api auth]` combined with a prefix
+    Natural phrases and tags; no `op=`/`k=v` clutter.
+
+    Numeric tokens from py_utils.format / py_utils.currency emit Rich markup
+    ([green]…[/], [red]…[/]) when color is enabled. The logger parses it in
+    TTY and strips it in plain text.
+
+Errors and tracebacks
+    error(msg_or_exc, exc=False) — single line; Exception or exc=True prints
+    an indented (dim) traceback.
+    task() failures show a red closing line with duration, then the traceback.
+
+API
+    trace/debug/info/warn/warn_once/error/fatal
+    success/fail/event/wait/ready/step
+    section(title) / task(title) — context managers
+    progress(total=None, title=None) → handle.tick()/update(n)/done(success=True)
+    time(label) / time_end(label, level="trace")
+    with_prefix(text) / tag(*tags) → Logger
+
+Config (runtime only)
+    set_level, enable_color, enable_live_updates, set_show_tracebacks, set_symbols
+    Format helpers auto-sign non-zero numbers; pass signed=False to drop the `+`.
+
+Why this shape
+    Fast visual parsing via symbols + indentation.
+    Status verbs map to how outcomes are communicated.
+    Zero config, sensible TTY/CI defaults, no handlers/formatters/k=v clutter.
+    Same semantics intentionally portable to ts-utils and go-utils.
+"""
+
 from __future__ import annotations
 
 import os

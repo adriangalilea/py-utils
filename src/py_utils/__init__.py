@@ -34,6 +34,19 @@ from .kev import kev, Kev
 
 from .unseen import unseen
 
+from .offensive import (
+    require,
+    invariant,
+    ensure,
+    must,
+    boundary,
+    ContractError,
+    PreconditionError,
+    InvariantError,
+    PostconditionError,
+    SourcedError,
+)
+
 from .currency import (
     get_symbol,
     get_optimal_decimals,
@@ -51,6 +64,17 @@ from .currency import (
 __all__ = [
     # unseen
     "unseen",
+    # offensive
+    "require",
+    "invariant",
+    "ensure",
+    "must",
+    "boundary",
+    "ContractError",
+    "PreconditionError",
+    "InvariantError",
+    "PostconditionError",
+    "SourcedError",
     # kev
     "kev",
     "Kev",
