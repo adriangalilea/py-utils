@@ -1,7 +1,7 @@
 [project]
 name = "adrian-utils"
-version = "0.4.0"
-description = "Generic Python utilities — KEV environment manager, XDG directories, persistent dedup filter, DX-first terminal logger, number/percentage/currency formatting. Python 3.12+."
+version = "0.5.0"
+description = "Generic Python utilities — KEV environment manager, XDG directories, persistent dedup filter, DX-first terminal logger, number/percentage/currency formatting, TTS text normalization (say). Python 3.12+."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
@@ -11,3 +11,50 @@ dependencies = [
     "rich>=14.1.0",
     "ruff>=0.13.2",
 ]
+
+[project.optional-dependencies]
+# `py_utils.verbalize` — TTS text normalization (Text-to-Speech frontend).
+# Only needed if you import `from py_utils.verbalize import normalize`;
+# pure-Python with num2words.
+verbalize = ["num2words>=0.5.14"]
+
+# Adds spaCy + `es_core_news_sm` for Spanish gender concordance and
+# apocope. Without this extra the Spanish post-pass falls back to a
+# coarse suffix heuristic — works on common cases, drops accuracy on
+# uncommon nouns. The model is pinned to a specific wheel URL so
+# `pip install` is one-shot (no separate `spacy download` step).
+verbalize-spanish = [
+    "num2words>=0.5.14",
+    "spacy>=3.7,<4",
+    "es_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl",
+]
+
+[project.scripts]
+# Pulled in when the `verbalize` extra is installed (num2words is the
+# only runtime dep). Without the extra the script entry still installs
+# but `verbalize` will fail at import time with a clear error.
+verbalize = "py_utils.verbalize.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/py_utils"]
+
+# `verbalize-spanish` pins ``es_core_news_sm`` via a direct wheel URL
+# (no separate ``spacy download`` step needed). Hatchling refuses
+# direct refs by default; flip this on so the extra resolves.
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+# Test discovery: Go-style ``<module>_test.py`` co-located with source
+# files instead of a separate ``tests/`` tree. Pytest's default also
+# discovers ``test_*.py`` so either convention works, but the explicit
+# pattern keeps surprises away.
+[tool.pytest.ini_options]
+python_files = ["*_test.py"]
+testpaths = ["src/py_utils"]
