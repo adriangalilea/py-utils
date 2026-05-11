@@ -58,27 +58,27 @@ from typing import Optional, Tuple
 # masculine canonical form num2words emits, paired with the feminine
 # variant we swap to before a feminine noun.
 _MASC_TO_FEM = {
-    "doscientos":   "doscientas",
-    "trescientos":  "trescientas",
-    "cuatrocientos":"cuatrocientas",
-    "quinientos":   "quinientas",
-    "seiscientos":  "seiscientas",
-    "setecientos":  "setecientas",
-    "ochocientos":  "ochocientas",
-    "novecientos":  "novecientas",
-    "uno":          "una",
-    "veintiún":     "veintiuna",
-    "veintiuno":    "veintiuna",
-    "alguno":       "alguna",
-    "ninguno":      "ninguna",
+    "doscientos": "doscientas",
+    "trescientos": "trescientas",
+    "cuatrocientos": "cuatrocientas",
+    "quinientos": "quinientas",
+    "seiscientos": "seiscientas",
+    "setecientos": "setecientas",
+    "ochocientos": "ochocientas",
+    "novecientos": "novecientas",
+    "uno": "una",
+    "veintiún": "veintiuna",
+    "veintiuno": "veintiuna",
+    "alguno": "alguna",
+    "ninguno": "ninguna",
 }
 
 # Apocope: drop final ``-o`` before a masculine singular noun.
 _APOCOPE = {
-    "uno":       "un",
+    "uno": "un",
     "veintiuno": "veintiún",
-    "alguno":    "algún",
-    "ninguno":   "ningún",
+    "alguno": "algún",
+    "ninguno": "ningún",
 }
 
 
@@ -105,6 +105,7 @@ def _try_load_spacy() -> Optional[object]:
         return _nlp
     try:
         import spacy
+
         _nlp = spacy.load(
             "es_core_news_sm",
             disable=["parser", "ner", "lemmatizer", "attribute_ruler"],
@@ -139,6 +140,7 @@ def _morph(word: str) -> Tuple[str, str, str]:
 
 
 # ─── Heuristic fallback (when spaCy unavailable) ────────────────────
+
 
 def _heuristic_gender_number(word: str) -> Tuple[str, str]:
     """Coarse suffix-based gender/number guess. Used only when spaCy

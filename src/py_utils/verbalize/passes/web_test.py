@@ -16,7 +16,9 @@ def test_simple_url_vocalized_english():
 
 
 def test_complex_url_placeholder():
-    out = replace_urls("Documentation at https://docs.example.com/v1/api?q=foo", "spanish")
+    out = replace_urls(
+        "Documentation at https://docs.example.com/v1/api?q=foo", "spanish"
+    )
     assert "enlace" in out
 
 

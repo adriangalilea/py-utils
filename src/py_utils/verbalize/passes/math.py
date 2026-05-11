@@ -73,9 +73,7 @@ def expand_math(text: str, lang: str) -> str:
         word = langs.get(lang)
         if word is None:
             continue
-        pat = re.compile(
-            r"(\d)\s*" + re.escape(op) + r"\s*(\d)"
-        )
+        pat = re.compile(r"(\d)\s*" + re.escape(op) + r"\s*(\d)")
         text = pat.sub(rf"\1 {word} \2", text)
 
     # Whitespace collapse handled by pipeline's final pass.

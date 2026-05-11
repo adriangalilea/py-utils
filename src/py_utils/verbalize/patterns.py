@@ -28,17 +28,17 @@ TRAILING_PUNCT = ".,;:!?)]}"
 # ─── Markdown ───────────────────────────────────────────────────────
 # Code blocks must run first because they shadow inline patterns.
 
-MD_CODE_BLOCK   = re.compile(r"```[\s\S]*?```", re.MULTILINE)
-MD_INLINE_CODE  = re.compile(r"`+([^`]+)`+")
-MD_LINK         = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-MD_IMAGE        = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
+MD_CODE_BLOCK = re.compile(r"```[\s\S]*?```", re.MULTILINE)
+MD_INLINE_CODE = re.compile(r"`+([^`]+)`+")
+MD_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+MD_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
 # Bold/italic/strike: keep inner text. Order matters — longest first.
-MD_BOLD_ITALIC  = re.compile(r"(\*\*\*|\*\*|\*|_{1,3}|~~)(.+?)\1")
-MD_HEADING      = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
-MD_BLOCKQUOTE   = re.compile(r"^\s{0,3}>\s+", re.MULTILINE)
-MD_HR           = re.compile(r"^\s*[-*_]{3,}\s*$", re.MULTILINE)
-MD_LIST_BULLET  = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
-MD_LIST_NUM     = re.compile(r"^\s*\d+\.\s+", re.MULTILINE)
+MD_BOLD_ITALIC = re.compile(r"(\*\*\*|\*\*|\*|_{1,3}|~~)(.+?)\1")
+MD_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
+MD_BLOCKQUOTE = re.compile(r"^\s{0,3}>\s+", re.MULTILINE)
+MD_HR = re.compile(r"^\s*[-*_]{3,}\s*$", re.MULTILINE)
+MD_LIST_BULLET = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
+MD_LIST_NUM = re.compile(r"^\s*\d+\.\s+", re.MULTILINE)
 
 
 # ─── Whitespace + sentence terminators ──────────────────────────────
@@ -53,8 +53,8 @@ SENT_TERMINAL = ".!?"
 
 DATE_DMY = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 DATE_ISO = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")
-TIME_HM  = re.compile(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
-PERCENT  = re.compile(r"(\d+(?:[.,]\d+)*)\s*%")
+TIME_HM = re.compile(r"\b(\d{1,2}):(\d{2})(?::(\d{2}))?\b")
+PERCENT = re.compile(r"(\d+(?:[.,]\d+)*)\s*%")
 
 # "<digits>+" or "<digits>%+" written immediately after a number/percent
 # meaning "or more" / "and up" ("$10,000+", "100%+"). Optional %? lets
@@ -68,7 +68,7 @@ PLUS_SUFFIX = re.compile(r"(\d+(?:[.,]\d+)*\s*%?)\+(?![\w+])")
 # disambiguate "7,000" vs "7,5" before applying the locale-specific
 # decimal rule.
 THOUSANDS_COMMA = re.compile(r"^\d{1,3}(,\d{3})+$")
-THOUSANDS_DOT   = re.compile(r"^\d{1,3}(\.\d{3})+$")
+THOUSANDS_DOT = re.compile(r"^\d{1,3}(\.\d{3})+$")
 
 # Number matcher. Digit runs with optional thousands separators and
 # decimal mark. Locale resolves the separator semantics in
@@ -89,9 +89,7 @@ ORDINAL_ES = re.compile(r"\b(\d{1,3})(º|ª|er|o|a)\b")
 # all-caps constraint avoids matching English "I" / "i" as a roman.
 # Word boundaries on both sides keep "MIX" (mixed) from matching as
 # 1009.
-ROMAN = re.compile(
-    r"\b(M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3}))\b"
-)
+ROMAN = re.compile(r"\b(M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3}))\b")
 
 
 # ─── Fractions ──────────────────────────────────────────────────────
@@ -121,7 +119,7 @@ SCI_NOTATION = re.compile(r"(?<![\w.])(-?\d+(?:\.\d+)?)[eE]([+-]?\d+)\b")
 # generic numeric sequences.
 PHONE = re.compile(
     r"(?<![\w.])"
-    r"(\+\d{1,3}[\s.-]?)?"          # optional country code
+    r"(\+\d{1,3}[\s.-]?)?"  # optional country code
     r"(\d{3})[\s.-]?(\d{3})[\s.-]?(\d{3})"  # 9-digit body, 3-3-3
     r"(?!\d)"
 )

@@ -1,4 +1,4 @@
-""""What's new since last time?" — filters a sequence of dicts to only
+""" "What's new since last time?" — filters a sequence of dicts to only
 the ones you haven't seen before. Remembers across runs.
 
     messages = fetch_messages()

@@ -104,8 +104,11 @@ def expand_doi(text: str, lang: str) -> str:
         reg = m.group(1)
         suf = m.group(2)
         # Registrant: read the prefix digit-by-digit + sub-codes
-        prefix = "ten " + _spell(int(reg.split(".")[1]), iso) if lang == "english" else \
-            "diez punto " + _spell(int(reg.split(".")[1]), iso)
+        prefix = (
+            "ten " + _spell(int(reg.split(".")[1]), iso)
+            if lang == "english"
+            else "diez punto " + _spell(int(reg.split(".")[1]), iso)
+        )
         return f"{p['doi']} {prefix} {p['slash']} {suf}"
 
     return _DOI.sub(_replace, text)

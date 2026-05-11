@@ -3,6 +3,7 @@ from py_utils.verbalize.passes.cleaners import strip_emojis, strip_markdown
 
 # ─── Emojis ─────────────────────────────────────────────────────────
 
+
 def test_strip_emoji_basic():
     out = strip_emojis("Hola 🔥 mundo")
     assert "🔥" not in out
@@ -28,6 +29,7 @@ def test_skin_tone_modifier_stripped():
 
 
 # ─── Markdown ───────────────────────────────────────────────────────
+
 
 def test_strip_bold():
     assert strip_markdown("**bold**") == "bold"

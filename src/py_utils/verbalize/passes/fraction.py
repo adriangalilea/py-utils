@@ -31,14 +31,30 @@ except ImportError:  # pragma: no cover
 
 
 _DENOM_ES = {
-    2: "medio", 3: "tercio", 4: "cuarto", 5: "quinto", 6: "sexto",
-    7: "séptimo", 8: "octavo", 9: "noveno", 10: "décimo",
-    11: "onceavo", 12: "doceavo",
+    2: "medio",
+    3: "tercio",
+    4: "cuarto",
+    5: "quinto",
+    6: "sexto",
+    7: "séptimo",
+    8: "octavo",
+    9: "noveno",
+    10: "décimo",
+    11: "onceavo",
+    12: "doceavo",
 }
 _DENOM_EN = {
-    2: "half", 3: "third", 4: "quarter", 5: "fifth", 6: "sixth",
-    7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth",
-    11: "eleventh", 12: "twelfth",
+    2: "half",
+    3: "third",
+    4: "quarter",
+    5: "fifth",
+    6: "sixth",
+    7: "seventh",
+    8: "eighth",
+    9: "ninth",
+    10: "tenth",
+    11: "eleventh",
+    12: "twelfth",
 }
 
 
@@ -55,12 +71,12 @@ def expand_fractions(text: str, lang: str) -> str:
     if lang == "spanish":
         denom_table = _DENOM_ES
         iso = "es"
-        unit_pos = lambda: "un"        # un cuarto, un tercio
+        unit_word = "un"  # un cuarto, un tercio
         plural_suffix = "s"
     elif lang == "english":
         denom_table = _DENOM_EN
         iso = "en"
-        unit_pos = lambda: "one"
+        unit_word = "one"
         plural_suffix = "s"
     else:
         return text
@@ -86,7 +102,7 @@ def expand_fractions(text: str, lang: str) -> str:
 
         # Numerator word
         if num == 1:
-            num_word = unit_pos()
+            num_word = unit_word
         else:
             num_word = _spell_numerator(num, iso)
         return f"{num_word} {den_word}"

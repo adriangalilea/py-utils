@@ -17,13 +17,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         prog="verbalize",
         description="Normalize text for TTS (emojis, markdown, URLs, "
-                    "numbers, dates, currency, units, abbreviations, …).",
+        "numbers, dates, currency, units, abbreviations, …).",
     )
-    parser.add_argument("text", nargs="?",
-                        help="Text to normalize. If omitted, reads stdin.")
-    parser.add_argument("--lang", "-l", default="en",
-                        help="Language: ISO ('es', 'en') or long name "
-                             "('spanish', 'english'). Default: en.")
+    parser.add_argument(
+        "text", nargs="?", help="Text to normalize. If omitted, reads stdin."
+    )
+    parser.add_argument(
+        "--lang",
+        "-l",
+        default="en",
+        help="Language: ISO ('es', 'en') or long name "
+        "('spanish', 'english'). Default: en.",
+    )
     parser.add_argument("--no-strip-emojis", action="store_true")
     parser.add_argument("--no-strip-urls", action="store_true")
     parser.add_argument("--no-strip-markdown", action="store_true")

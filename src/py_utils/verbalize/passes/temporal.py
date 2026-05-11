@@ -52,18 +52,18 @@ def expand_dates(text: str, lang: str) -> str:
 
 
 _FRACTIONAL = {
-    "spanish":    {15: "y cuarto", 30: "y media"},
-    "french":     {15: "et quart", 30: "et demie"},
-    "italian":    {15: "e un quarto", 30: "e mezza"},
-    "portuguese": {15: "e quinze",   30: "e meia"},
+    "spanish": {15: "y cuarto", 30: "y media"},
+    "french": {15: "et quart", 30: "et demie"},
+    "italian": {15: "e un quarto", 30: "e mezza"},
+    "portuguese": {15: "e quinze", 30: "e meia"},
 }
 
 _JOIN = {
-    "spanish":    " y ",
-    "english":    " ",
-    "french":     " ",
-    "german":     " ",
-    "italian":    " e ",
+    "spanish": " y ",
+    "english": " ",
+    "french": " ",
+    "german": " ",
+    "italian": " e ",
     "portuguese": " e ",
 }
 

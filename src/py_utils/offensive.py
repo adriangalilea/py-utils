@@ -96,15 +96,15 @@ def _format_context(context: dict[str, Any]) -> str:
     return " ".join(f"{k}={v!r}" for k, v in context.items())
 
 
-def _fail(
-    exc_cls: type[ContractError], message: str, context: dict[str, Any]
-) -> None:
+def _fail(exc_cls: type[ContractError], message: str, context: dict[str, Any]) -> None:
     ctx = _format_context(context)
     log.error(f"{message} [{ctx}]" if ctx else message)
     raise exc_cls(message, context)
 
 
-def require(condition: bool, message: str = "precondition failed", **context: Any) -> None:
+def require(
+    condition: bool, message: str = "precondition failed", **context: Any
+) -> None:
     """Precondition check. Raises PreconditionError with structured context on failure.
 
     Use at function entry to validate caller-supplied arguments.
@@ -119,7 +119,9 @@ def require(condition: bool, message: str = "precondition failed", **context: An
         _fail(PreconditionError, message, context)
 
 
-def invariant(condition: bool, message: str = "invariant violated", **context: Any) -> None:
+def invariant(
+    condition: bool, message: str = "invariant violated", **context: Any
+) -> None:
     """Invariant check. Raises InvariantError with structured context on failure.
 
     Use mid-function to assert that internal state holds. If this fires, the bug
@@ -132,7 +134,9 @@ def invariant(condition: bool, message: str = "invariant violated", **context: A
         _fail(InvariantError, message, context)
 
 
-def ensure(condition: bool, message: str = "postcondition failed", **context: Any) -> None:
+def ensure(
+    condition: bool, message: str = "postcondition failed", **context: Any
+) -> None:
     """Postcondition check. Raises PostconditionError with structured context on failure.
 
     Use before returning to verify the function delivered what it promised.
@@ -146,7 +150,9 @@ def ensure(condition: bool, message: str = "postcondition failed", **context: An
         _fail(PostconditionError, message, context)
 
 
-def must(value: T | None, message: str = "expected non-None value", **context: Any) -> T:
+def must(
+    value: T | None, message: str = "expected non-None value", **context: Any
+) -> T:
     """Unwrap Optional[T] → T. Raises InvariantError if None.
 
     Python's closest analogue to Go's Must() for (T, error) pairs. Use when a value
@@ -248,11 +254,11 @@ def boundary(source: str, operation: str | None = None) -> Callable[[F], F]:
                 # Contract violations are bugs in us, not the external source.
                 raise
             except Exception as e:
-                status = getattr(e, "status_code", None) or getattr(e, "http_status", None)
-                status_part = f" status={status}" if status is not None else ""
-                log.error(
-                    f"[{source}:{op}{status_part}] {type(e).__name__}: {e}"
+                status = getattr(e, "status_code", None) or getattr(
+                    e, "http_status", None
                 )
+                status_part = f" status={status}" if status is not None else ""
+                log.error(f"[{source}:{op}{status_part}] {type(e).__name__}: {e}")
                 raise SourcedError(
                     source=source,
                     operation=op,

@@ -30,28 +30,28 @@ except ImportError:  # pragma: no cover
 # alternation below. Conservative list — only zones a Spanish/English
 # listener routinely encounters.
 _ZONES_ES = {
-    "UTC":  "U T C",
-    "GMT":  "G M T",
-    "CET":  "C E T",
+    "UTC": "U T C",
+    "GMT": "G M T",
+    "CET": "C E T",
     "CEST": "horario central europeo de verano",
-    "EST":  "E S T",
-    "EDT":  "E D T",
-    "PST":  "hora del Pacífico",
-    "PDT":  "hora del Pacífico de verano",
-    "JST":  "hora de Japón",
-    "IST":  "hora de la India",
+    "EST": "E S T",
+    "EDT": "E D T",
+    "PST": "hora del Pacífico",
+    "PDT": "hora del Pacífico de verano",
+    "JST": "hora de Japón",
+    "IST": "hora de la India",
 }
 _ZONES_EN = {
-    "UTC":  "U T C",
-    "GMT":  "G M T",
-    "CET":  "Central European Time",
+    "UTC": "U T C",
+    "GMT": "G M T",
+    "CET": "Central European Time",
     "CEST": "Central European Summer Time",
-    "EST":  "Eastern Standard Time",
-    "EDT":  "Eastern Daylight Time",
-    "PST":  "Pacific Standard Time",
-    "PDT":  "Pacific Daylight Time",
-    "JST":  "Japan Standard Time",
-    "IST":  "India Standard Time",
+    "EST": "Eastern Standard Time",
+    "EDT": "Eastern Daylight Time",
+    "PST": "Pacific Standard Time",
+    "PDT": "Pacific Daylight Time",
+    "JST": "Japan Standard Time",
+    "IST": "India Standard Time",
 }
 
 _OFFSET_WORD = {
@@ -63,7 +63,11 @@ _ISO = {"spanish": "es", "english": "en"}
 
 
 def _zones_pattern(zones):
-    return r"\b(" + "|".join(re.escape(z) for z in zones) + r")(?:([+-])(\d{1,2})(?::(\d{2}))?)?\b"
+    return (
+        r"\b("
+        + "|".join(re.escape(z) for z in zones)
+        + r")(?:([+-])(\d{1,2})(?::(\d{2}))?)?\b"
+    )
 
 
 def _spell(n: int, iso: str) -> str:

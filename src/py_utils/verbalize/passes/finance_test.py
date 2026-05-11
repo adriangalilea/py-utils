@@ -41,4 +41,7 @@ def test_iban_spanish():
 
 
 def test_iban_unsupported_lang_noop():
-    assert expand_iban("ES12 3456 7890 1234 5678 9012", "german") == "ES12 3456 7890 1234 5678 9012"
+    assert (
+        expand_iban("ES12 3456 7890 1234 5678 9012", "german")
+        == "ES12 3456 7890 1234 5678 9012"
+    )

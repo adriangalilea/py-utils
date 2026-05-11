@@ -25,20 +25,20 @@ except ImportError:  # pragma: no cover
 
 
 _RANGE_JOIN = {
-    "spanish":    " a ",
-    "english":    " to ",
-    "french":     " à ",
-    "german":     " bis ",
-    "italian":    " a ",
+    "spanish": " a ",
+    "english": " to ",
+    "french": " à ",
+    "german": " bis ",
+    "italian": " a ",
     "portuguese": " a ",
 }
 
 _NUM_LANG_ISO = {
-    "spanish":    "es",
-    "english":    "en",
-    "french":     "fr",
-    "german":     "de",
-    "italian":    "it",
+    "spanish": "es",
+    "english": "en",
+    "french": "fr",
+    "german": "de",
+    "italian": "it",
     "portuguese": "pt",
 }
 

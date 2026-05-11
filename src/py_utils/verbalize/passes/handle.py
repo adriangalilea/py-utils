@@ -24,11 +24,11 @@ _HASHTAG = re.compile(r"(?<![\w&])#([A-Za-z][A-Za-z0-9_]+)\b")
 _MENTION = re.compile(r"(?<![\w@])@([A-Za-z][A-Za-z0-9_]+)\b")
 
 _HASHTAG_WORD = {
-    "spanish":    "etiqueta",
-    "english":    "hashtag",
-    "french":     "mot-clé",
-    "german":     "Hashtag",
-    "italian":    "hashtag",
+    "spanish": "etiqueta",
+    "english": "hashtag",
+    "french": "mot-clé",
+    "german": "Hashtag",
+    "italian": "hashtag",
     "portuguese": "hashtag",
 }
 

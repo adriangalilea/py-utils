@@ -31,8 +31,8 @@ except ImportError:  # pragma: no cover
 
 
 _PHRASING = {
-    "spanish":  ("más", "es"),
-    "english":  ("plus", "en"),
+    "spanish": ("más", "es"),
+    "english": ("plus", "en"),
 }
 
 
@@ -57,7 +57,7 @@ def expand_phones(text: str, lang: str) -> str:
         body = "".join(c for c in m.group(0) if c.isdigit())
         if country:
             cc_digits = "".join(c for c in country if c.isdigit())
-            body = body[len(cc_digits):]
+            body = body[len(cc_digits) :]
             return f"{plus_word} {_digits(cc_digits)} {_digits(body)}"
         return _digits(body)
 

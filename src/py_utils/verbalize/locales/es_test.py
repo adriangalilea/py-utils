@@ -7,6 +7,7 @@ from py_utils.verbalize.locales.es import (
 
 # ─── Trigger sweep ──────────────────────────────────────────────────
 
+
 def test_no_trigger_passthrough():
     # Text without trigger words: nothing happens, zero spaCy calls.
     out = post_pass("hola mundo de gente")
@@ -14,6 +15,7 @@ def test_no_trigger_passthrough():
 
 
 # ─── Concordance with feminine plural ───────────────────────────────
+
 
 def test_hundreds_before_feminine_plural_swap():
     out = post_pass("doscientos personas asistieron")
@@ -46,6 +48,7 @@ def test_false_positive_problemas_kept_masculine():
 
 
 # ─── Apocope ────────────────────────────────────────────────────────
+
 
 def test_apocope_before_masculine_singular():
     nlp = _try_load_spacy()
@@ -80,6 +83,7 @@ def test_uno_before_feminine_singular():
 
 
 # ─── classify_next ──────────────────────────────────────────────────
+
 
 def test_classify_next_returns_gender_for_known_word():
     nlp = _try_load_spacy()

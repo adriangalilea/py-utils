@@ -54,7 +54,12 @@ except ImportError:  # pragma: no cover
 
 
 _COMMA_DECIMAL_LANGS = {
-    "spanish", "german", "french", "italian", "portuguese", "russian",
+    "spanish",
+    "german",
+    "french",
+    "italian",
+    "portuguese",
+    "russian",
 }
 
 # Single ``.`` followed by 1-2 digits — almost certainly a US-style

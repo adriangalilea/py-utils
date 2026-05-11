@@ -112,7 +112,9 @@ def replace_urls(
             return email_word + trailing
         local, sep, host = matched.partition("@")
         if sep and host:
-            return f"{local} {at_word} {_vocalize_host(host, dot_word, lang)}" + trailing
+            return (
+                f"{local} {at_word} {_vocalize_host(host, dot_word, lang)}" + trailing
+            )
         return email_word + trailing
 
     text = P.URL_PATTERN.sub(_replace_url, text)

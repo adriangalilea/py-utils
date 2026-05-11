@@ -19,6 +19,7 @@ from py_utils.verbalize import normalize
 
 # ─── Multi-class realistic input ────────────────────────────────────
 
+
 def test_realistic_finance_chat():
     text = (
         "En 2024 invertí en $AAPL ($150/acción), BTC ($60K), y bonos al 5,5%. "
@@ -65,6 +66,7 @@ def test_realistic_meeting_invite():
 
 # ─── Pass interaction edges that DO work ────────────────────────────
 
+
 def test_date_with_currency():
     # "$1.234,56" — Spanish thousands (.) + decimal (,). Currency
     # pulls the "$" off, then cardinal handles "1.234,56" as
@@ -93,7 +95,10 @@ def test_chemistry_with_subscript_and_digit():
 
 # ─── Known failures (documented limits) ─────────────────────────────
 
-@pytest.mark.xfail(reason="Aspect ratios match the range pass — '16:9' is read as a time-like construct or two cardinals")
+
+@pytest.mark.xfail(
+    reason="Aspect ratios match the range pass — '16:9' is read as a time-like construct or two cardinals"
+)
 def test_aspect_ratio_not_a_time():
     # "16:9" should read as "dieciséis a nueve" or "dieciséis nueve"
     # — it's an aspect ratio. Our time regex requires 2-digit minute
@@ -102,7 +107,9 @@ def test_aspect_ratio_not_a_time():
     assert "dieciséis a nueve" in out
 
 
-@pytest.mark.xfail(reason="Multi-paragraph mix with all classes — some interactions still mistime")
+@pytest.mark.xfail(
+    reason="Multi-paragraph mix with all classes — some interactions still mistime"
+)
 def test_kitchen_sink_paragraph():
     text = (
         "# Resumen\n"
@@ -121,7 +128,9 @@ def test_kitchen_sink_paragraph():
     assert "nueve a dieciocho" in out  # time range
 
 
-@pytest.mark.xfail(reason="Sport scores like '3-1' or '25-21' read as cardinal range, may sound stilted")
+@pytest.mark.xfail(
+    reason="Sport scores like '3-1' or '25-21' read as cardinal range, may sound stilted"
+)
 def test_sport_score_reading():
     out = normalize("El partido acabó 3-1", lang="es")
     # 3-1 doesn't hit our range regex (needs 2+ digits per side).
@@ -130,7 +139,9 @@ def test_sport_score_reading():
     assert "tres a uno" in out
 
 
-@pytest.mark.xfail(reason="Time range with hyphen — '9:00-18:00' splits awkwardly because time pass runs before range")
+@pytest.mark.xfail(
+    reason="Time range with hyphen — '9:00-18:00' splits awkwardly because time pass runs before range"
+)
 def test_time_range_natural_reading():
     out = normalize("Abierto de 9:00-18:00", lang="es")
     # Each side becomes a time, then the hyphen between them reads
@@ -145,14 +156,18 @@ def test_roman_no_false_positive_on_english_word():
     assert "DC" in out
 
 
-@pytest.mark.xfail(reason="Math symbols inside prose without flanking digits don't activate — '5 + 3 = 8' works but '+ five' doesn't")
+@pytest.mark.xfail(
+    reason="Math symbols inside prose without flanking digits don't activate — '5 + 3 = 8' works but '+ five' doesn't"
+)
 def test_math_symbol_in_prose():
     out = normalize("La fórmula es x + y = z", lang="es")
     # x and y aren't digits so operators stay literal.
     assert "más" in out or "igual" in out
 
 
-@pytest.mark.xfail(reason="Italian / German / Portuguese / Russian / Japanese / Korean / Chinese have minimal coverage — only basics work")
+@pytest.mark.xfail(
+    reason="Italian / German / Portuguese / Russian / Japanese / Korean / Chinese have minimal coverage — only basics work"
+)
 def test_german_basic_currency():
     out = normalize("Das kostet 100€", lang="de")
     # Currency table has German entries
@@ -188,6 +203,7 @@ def test_doi_complex_suffix():
 
 # ─── Spanish concordance stress ─────────────────────────────────────
 
+
 def test_concordance_with_loanword():
     out = normalize("Compré 21 gigabytes", lang="es")
     # gigabyte is PROPN with no gender → apocope fires by default
@@ -200,7 +216,9 @@ def test_concordance_with_quoted_speech():
     assert "trescientas personas" in out
 
 
-@pytest.mark.xfail(reason="Multiple triggers in succession — 'doscientos y trescientos personas' second one needs lookback")
+@pytest.mark.xfail(
+    reason="Multiple triggers in succession — 'doscientos y trescientos personas' second one needs lookback"
+)
 def test_chained_triggers():
     out = normalize("doscientos y trescientos personas", lang="es")
     assert "doscientas" in out and "trescientas" in out

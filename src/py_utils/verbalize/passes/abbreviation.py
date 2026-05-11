@@ -36,7 +36,7 @@ def expand_abbreviations(
     stripped = text.rstrip()
     final = stripped[-1] if stripped else ""
     had_terminator = final in P.SENT_TERMINAL
-    trailing_ws = text[len(stripped):] if had_terminator else ""
+    trailing_ws = text[len(stripped) :] if had_terminator else ""
 
     for pattern, replacement in table.items():
         text = re.sub(pattern, replacement, text)

@@ -27,8 +27,8 @@ except ImportError:  # pragma: no cover
 
 
 _PHRASING = {
-    "spanish":  ("por diez elevado a", "menos", "coma"),
-    "english":  ("times ten to the", "negative", "point"),
+    "spanish": ("por diez elevado a", "menos", "coma"),
+    "english": ("times ten to the", "negative", "point"),
 }
 
 

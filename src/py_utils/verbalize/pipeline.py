@@ -40,7 +40,6 @@ this file is the contract that says "this is the order".
 
 from __future__ import annotations
 
-import re
 from typing import Dict, Optional
 
 from . import patterns as P

@@ -9,6 +9,7 @@ from py_utils.verbalize.pipeline import normalize
 
 # ─── ISO code resolution ────────────────────────────────────────────
 
+
 def test_iso_code_accepted():
     long_form = normalize("100 GB/s", lang="spanish")
     iso_form = normalize("100 GB/s", lang="es")
@@ -23,6 +24,7 @@ def test_unknown_lang_doesnt_crash():
 
 
 # ─── End-to-end battery (same cases as tn-compare/ vs NeMo) ────────
+
 
 def test_unit_with_ratio():
     out = normalize("Velocidad de 100 GB/s", lang="es")
@@ -101,12 +103,14 @@ def test_emoji_stripped():
 
 # ─── Ordinals ───────────────────────────────────────────────────────
 
+
 def test_ordinal_in_sentence():
     out = normalize("Vivo en el 1º piso", lang="es")
     assert "primero" in out
 
 
 # ─── Romans ─────────────────────────────────────────────────────────
+
 
 def test_roman_monarch():
     out = normalize("Felipe VI reinó", lang="es")
@@ -121,12 +125,14 @@ def test_roman_century():
 
 # ─── Fractions ──────────────────────────────────────────────────────
 
+
 def test_fraction():
     out = normalize("1/4 de la población", lang="es")
     assert "un cuarto" in out
 
 
 # ─── Phones ─────────────────────────────────────────────────────────
+
 
 def test_phone():
     out = normalize("Llama al +34 600 123 456", lang="es")
@@ -135,6 +141,7 @@ def test_phone():
 
 # ─── Sci notation ───────────────────────────────────────────────────
 
+
 def test_sci_notation():
     out = normalize("Hay 6.022e23 moléculas", lang="es")
     assert "seis coma" in out
@@ -142,6 +149,7 @@ def test_sci_notation():
 
 
 # ─── Bible references ──────────────────────────────────────────────
+
 
 def test_bible_ref_single_verse():
     out = normalize("En Génesis 1:1 está el principio", lang="es")
@@ -156,6 +164,7 @@ def test_bible_ref_range():
 
 
 # ─── Feature flags ──────────────────────────────────────────────────
+
 
 def test_disable_emoji_strip():
     out = normalize("🔥 hola", lang="es", strip_emojis=False)

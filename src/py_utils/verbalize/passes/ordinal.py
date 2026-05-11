@@ -33,9 +33,10 @@ except ImportError:  # pragma: no cover
 # apocope by the explicit ``er`` / ``r`` suffix the writer chose. Map
 # masculine form → apocope form for the words that need it.
 _ES_APOCOPE = {
-    "primero":   "primer",
-    "tercero":   "tercer",
+    "primero": "primer",
+    "tercero": "tercer",
 }
+
 
 # Masculine → feminine. Spanish ordinals form feminine by replacing the
 # final ``o`` with ``a`` for the entire word; for compound ordinals
