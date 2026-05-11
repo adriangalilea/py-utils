@@ -18,15 +18,20 @@ dependencies = [
 # pure-Python with num2words.
 verbalize = ["num2words>=0.5.14"]
 
-# Adds spaCy + `es_core_news_sm` for Spanish gender concordance and
-# apocope. Without this extra the Spanish post-pass falls back to a
-# coarse suffix heuristic — works on common cases, drops accuracy on
-# uncommon nouns. The model is pinned to a specific wheel URL so
-# `pip install` is one-shot (no separate `spacy download` step).
+# Adds spaCy for Spanish gender concordance and apocope. PyPI rejects
+# direct-URL dependencies, so the model (es_core_news_sm) is NOT pinned
+# here — install it separately:
+#
+#     pip install adrian-utils[verbalize-spanish]
+#     python -m spacy download es_core_news_sm
+#
+# Without the model the Spanish post-pass falls back to a coarse suffix
+# heuristic — works on common cases, drops accuracy on uncommon nouns.
+# Internal consumers that bypass PyPI (pinning py-utils via git URL)
+# can add the model wheel directly via their own [tool.uv.sources].
 verbalize-spanish = [
     "num2words>=0.5.14",
     "spacy>=3.7,<4",
-    "es_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/es_core_news_sm-3.8.0/es_core_news_sm-3.8.0-py3-none-any.whl",
 ]
 
 [project.scripts]
