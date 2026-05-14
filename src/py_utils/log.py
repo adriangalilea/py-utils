@@ -319,8 +319,9 @@ class Logger:
         want_tb = exc or isinstance(msg_or_exc, BaseException)
         if want_tb and self._cfg.show_tracebacks:
             tb = traceback.format_exc()
-            for line in tb.strip().splitlines():
-                self._with_extra_indent(lambda: self._write_line("step", line))
+            with self._with_extra_indent():
+                for line in tb.strip().splitlines():
+                    self._write_line("step", line)
 
     def fatal(
         self, msg_or_exc: Any, *, exit_code: int = 1, exc: bool | None = None
@@ -353,18 +354,16 @@ class Logger:
 
     # ----- indentation & grouping -----
     @contextmanager
-    def _with_extra_indent(self, fn: Optional[Callable[[], None]] = None):
+    def _with_extra_indent(self):
         self._state.indent += 1
         try:
-            if fn is not None:
-                fn()
-            else:
-                yield
+            yield
         finally:
             self._state.indent -= 1
 
     def step(self, message: str) -> None:
-        self._with_extra_indent(lambda: self._write_line("step", message))
+        with self._with_extra_indent():
+            self._write_line("step", message)
 
     @contextmanager
     def section(self, title: str):
@@ -392,8 +391,9 @@ class Logger:
                 self._write_line("fail", f"{title} ({_dur(dur_ms)})")
                 if self._cfg.show_tracebacks:
                     tb = traceback.format_exc()
-                    for line in tb.strip().splitlines():
-                        self._with_extra_indent(lambda: self._write_line("step", line))
+                    with self._with_extra_indent():
+                        for line in tb.strip().splitlines():
+                            self._write_line("step", line)
             else:
                 self._write_line("success", f"{title} ({_dur(dur_ms)})")
 
