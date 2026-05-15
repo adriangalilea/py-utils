@@ -26,17 +26,27 @@ def strip_emojis(text: str) -> str:
     """
     out: List[str] = []
     for c in text:
+        cp = ord(c)
+        # ``So`` is a coarse category — it covers pictographs (🔥) but
+        # also textual symbols (°, ™, ©) that carry pronounceable
+        # meaning downstream. Whitelist the latter so e.g. ``°C`` and
+        # ``25°`` survive to the temperature pass.
+        if c in _TEXT_SYMBOLS:
+            out.append(c)
+            continue
         cat = unicodedata.category(c)
         if cat in ("So", "Sk"):
             out.append(" ")
             continue
-        cp = ord(c)
         if 0xFE00 <= cp <= 0xFE0F:  # variation selectors
             continue
         if cp in (0x200D, 0x2060, 0xFEFF):  # ZWJ, WJ, BOM
             continue
         out.append(c)
     return "".join(out)
+
+
+_TEXT_SYMBOLS = frozenset("°™©®")
 
 
 def strip_markdown(text: str) -> str:

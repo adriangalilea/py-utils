@@ -58,12 +58,14 @@ from .passes import (
     fraction,
     handle,
     math as math_pass,
+    negative,
     network,
     ordinal,
     phone,
     range_,
     roman,
     sci,
+    temperature,
     temporal,
     timezone,
     units,
@@ -179,6 +181,9 @@ def normalize(
         text = economic.expand_plus_suffix(text, lang)
         text = economic.expand_currency(text, lang)
         text = economic.expand_percent(text, lang)
+        # Temperature/degree before units so ``°C`` doesn't survive as
+        # a bare letter "C" out of the units pass.
+        text = temperature.expand_temperatures(text, lang)
         text = units.expand_units(text, lang)
         text = ordinal.expand_ordinals(text, lang)
         text = roman.expand_romans(text, lang)
@@ -187,6 +192,9 @@ def normalize(
         # Math symbols + operators just before the bare-cardinal pass
         # so digit operands stay intact for the operator regex.
         text = math_pass.expand_math(text, lang)
+        # Negative sign last among the symbolic passes — every other
+        # hyphen consumer (range, sci, date, phone) has already run.
+        text = negative.expand_negatives(text, lang)
         text = cardinal.expand_numbers(text, lang)
 
     # 4. Discourse cleanups — whitespace-flanked slashes left over after

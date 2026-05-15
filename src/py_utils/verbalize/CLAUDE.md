@@ -103,12 +103,14 @@ sequences them and applies the locale post-pass.
 | Fractions | `passes/fraction.py` | es/en | `1/4` → `un cuarto` | Disambig vs dates/paths |
 | Ranges | `passes/range_.py` | 6 | `1990-2000` → `mil novecientos noventa a dos mil` | |
 | Math symbols | `passes/math.py` | es/en | `π`, `5 = 5` → `pi`, `5 igual a 5` | Operators need digit flanking |
+| Temperature | `passes/temperature.py` | es/en/fr/de/it/pt | `12.9°C` → `12.9 grados Celsius`, `20°` → `20 grados` | °C / °F / bare ° |
+| Negative sign | `passes/negative.py` | es/en/fr/de/it/pt | `-5` → `menos 5` / `minus 5` | After every other hyphen consumer |
 | Cardinals | `passes/cardinal.py` | 9 | `1.234,56` → locale-aware reading | Last numeric pass |
 | Prose slash | `passes/discourse.py` | es/en/fr/de/it/pt | `foo / bar` → `foo or bar` | Whitespace-flanked only |
 | ES concordance | `locales/es.py` | es | `300 personas` → `trescientas personas` | spaCy-backed if installed |
 | ES apocope | `locales/es.py` | es | `uno libro` → `un libro` | spaCy-backed if installed |
 
-Counts: 31 semiotic classes across 25 pass modules + 2 locale post-passes.
+Counts: 33 semiotic classes across 27 pass modules + 2 locale post-passes.
 
 ## File layout
 
@@ -198,6 +200,18 @@ two bugs surfaced by the NeMo comparison:
    chat content like `ask_session / kill_session`. Fix: new
    `passes/discourse.py` substitutes whitespace-flanked slashes with
    "or" / "o" after every other slash-consuming pass has run.
+8. **Temperature lost its `°` glyph** — ``12.9°C`` read as "twelve
+   point nine C". The emoji stripper was eating `°` (Unicode category
+   ``So`` is shared with pictographs) before any pass could see it.
+   Fix: whitelist textual symbols (``°``, ``™``, ``©``, ``®``) in
+   ``strip_emojis``; new ``passes/temperature.py`` then expands
+   ``°C`` / ``°F`` / bare ``°``. ``passes/cleaners.py`` carries the
+   whitelist.
+9. **Negative numbers read as "dash"** — ``-5°C`` produced "dash five
+   …" because no pass owned the unary-minus case. Fix: new
+   ``passes/negative.py`` substitutes a leading ``-`` before a digit
+   with "menos" / "minus", running after every other hyphen consumer
+   (ranges, dates, phones, sci notation).
 
 ## Future direction
 
