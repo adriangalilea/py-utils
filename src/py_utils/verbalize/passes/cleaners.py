@@ -54,10 +54,23 @@ def strip_markdown(text: str) -> str:
     text = P.MD_IMAGE.sub(r"\1", text)
     text = P.MD_LINK.sub(r"\1 \2", text)
     text = P.MD_INLINE_CODE.sub(r"\1", text)
-    text = P.MD_BOLD_ITALIC.sub(r"\2", text)
+    text = P.MD_BOLD_ITALIC.sub(lambda m: m.group(2) or m.group(4), text)
     text = P.MD_HEADING.sub("", text)
     text = P.MD_BLOCKQUOTE.sub("", text)
     text = P.MD_HR.sub("", text)
+    # List items: ensure the line before a list marker ends with a
+    # sentence terminator. The pipeline's final whitespace collapse
+    # otherwise merges "intro:\n1. foo\n2. bar" into one run-on
+    # sentence the TTS reads without phrase breaks.
+    text = P.LIST_ITEM_BREAK.sub(".\n", text)
     text = P.MD_LIST_BULLET.sub("", text)
     text = P.MD_LIST_NUM.sub("", text)
+    # snake_case identifiers (``WAKE_WORD_MODEL_PATH``, ``dispatch_to_tmux``)
+    # survive italic stripping by the non-word-boundary guard in
+    # MD_BOLD_ITALIC. Replace their connecting underscores with a space
+    # so the TTS reads "wake word model path", not letter-by-letter.
+    # Edge underscores (``_fire_wake`` → ``fire wake``) drop too.
+    text = P.SNAKE_UNDERSCORE.sub(" ", text)
+    text = P.EDGE_UNDERSCORE.sub("", text)
+    text = P.WORD_DOUBLE_HYPHEN.sub("-", text)
     return text

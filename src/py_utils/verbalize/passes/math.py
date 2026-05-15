@@ -36,7 +36,10 @@ _SYMBOLS = {
     "²": {"spanish": "al cuadrado", "english": "squared"},
     "³": {"spanish": "al cubo", "english": "cubed"},
     "±": {"spanish": "más menos", "english": "plus minus"},
-    "→": {"spanish": "implica", "english": "implies"},
+    # ``→`` is overwhelmingly chat/code prose for "becomes" / "to"
+    # (``"hey_jarvis" → trained``, ``input → output``). "implies" only
+    # makes sense in formal logic, where ``⇒`` is the right glyph.
+    "→": {"spanish": "a", "english": "to"},
     "⇒": {"spanish": "implica", "english": "implies"},
     "⇔": {"spanish": "si y sólo si", "english": "if and only if"},
     "∈": {"spanish": "pertenece a", "english": "in"},

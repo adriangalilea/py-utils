@@ -47,6 +47,18 @@ def test_logical_operators():
     assert "implica" in out
 
 
+def test_arrow_reads_as_to_in_prose():
+    # ``→`` in chat / code prose reads as "to" / "a", not "implies"
+    # (which is reserved for the strict-logic ``⇒`` glyph).
+    out = expand_math("input → output", "english")
+    assert " to " in out
+    assert "implies" not in out
+
+    out = expand_math("entrada → salida", "spanish")
+    assert " a " in out
+    assert "implica" not in out
+
+
 def test_set_operators():
     out = expand_math("x ∈ S", "spanish")
     assert "pertenece" in out

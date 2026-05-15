@@ -1,6 +1,6 @@
 [project]
 name = "adrian-utils"
-version = "0.5.1"
+version = "0.5.2"
 description = "Generic Python utilities — KEV environment manager, XDG directories, persistent dedup filter, DX-first terminal logger, number/percentage/currency formatting, TTS text normalization (say). Python 3.12+."
 readme = "README.md"
 requires-python = ">=3.12"

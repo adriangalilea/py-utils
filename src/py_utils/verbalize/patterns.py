@@ -33,12 +33,39 @@ MD_INLINE_CODE = re.compile(r"`+([^`]+)`+")
 MD_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 MD_IMAGE = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
 # Bold/italic/strike: keep inner text. Order matters — longest first.
-MD_BOLD_ITALIC = re.compile(r"(\*\*\*|\*\*|\*|_{1,3}|~~)(.+?)\1")
+# Underscore variants require a non-word boundary on both sides so
+# snake_case identifiers (``WAKE_WORD_PATH``, ``dispatch_to_tmux``)
+# don't get matched as italic and have their underscores eaten.
+MD_BOLD_ITALIC = re.compile(
+    r"(\*\*\*|\*\*|\*|~~)(.+?)\1"
+    r"|(?<!\w)(_{1,3})(.+?)\3(?!\w)"
+)
 MD_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
 MD_BLOCKQUOTE = re.compile(r"^\s{0,3}>\s+", re.MULTILINE)
 MD_HR = re.compile(r"^\s*[-*_]{3,}\s*$", re.MULTILINE)
 MD_LIST_BULLET = re.compile(r"^\s*[-*+]\s+", re.MULTILINE)
 MD_LIST_NUM = re.compile(r"^\s*\d+\.\s+", re.MULTILINE)
+
+# Line break preceding a list marker (numbered or bulleted) when the
+# previous line lacks terminal punctuation. Matched newline is replaced
+# with ".\n" so the final whitespace collapse produces ". " between
+# items and the TTS phrase-breaks.
+LIST_ITEM_BREAK = re.compile(r"(?<=[^.!?:;\n\s])\n(?=\s*(?:\d+\.|[-*+])\s)")
+
+# Underscore between two word chars — snake_case identifier connectors
+# left over after italic stripping. ``WAKE_WORD`` → ``WAKE WORD`` so
+# TTS reads the words, not "wake underscore word".
+SNAKE_UNDERSCORE = re.compile(r"(?<=\w)_(?=\w)")
+# Leading/trailing underscores on identifiers — ``_fire_wake`` →
+# ``fire_wake`` (then the snake pass handles the rest). Bare lone ``_``
+# in prose is uncommon; if it appears we drop it.
+EDGE_UNDERSCORE = re.compile(r"(?<!\w)_+|_+(?!\w)")
+# Word-glued double hyphen — artifact of stripping inline-code: the
+# backticks around ``pb-`` leave the trailing ``-`` glued to a literal
+# ``-`` in the surrounding prose ("pb--prefixed"). Collapse to one.
+# Spaced ``--`` (em-dash usage) stays intact: only word-flanked runs
+# are collapsed.
+WORD_DOUBLE_HYPHEN = re.compile(r"(?<=\w)-{2,}(?=\w)")
 
 
 # ─── Whitespace + sentence terminators ──────────────────────────────

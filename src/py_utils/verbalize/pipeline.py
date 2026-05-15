@@ -52,6 +52,7 @@ from .passes import (
     chemistry,
     cleaners,
     color,
+    discourse,
     economic,
     finance,
     fraction,
@@ -188,7 +189,11 @@ def normalize(
         text = math_pass.expand_math(text, lang)
         text = cardinal.expand_numbers(text, lang)
 
-    # 4. Locale post-pass
+    # 4. Discourse cleanups — whitespace-flanked slashes left over after
+    #    fractions / units / URLs read as "or" in chat prose.
+    text = discourse.expand_slash_or(text, lang)
+
+    # 5. Locale post-pass
     locale_fn = _LOCALE_PASS.get(lang)
     if locale_fn is not None:
         text = locale_fn(text)

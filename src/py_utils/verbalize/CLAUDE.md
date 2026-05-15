@@ -53,11 +53,11 @@ responsibility:
 input ──► cleaners ──► web ──► abbreviation ──► temporal
                                                     │
                                                     ▼
-        spanish post ◄── cardinal ◄── ordinal ◄── roman
-        (gender +       (decimal +   (1º, 3er,   (XXI,
-         apocope)       thousands)    2ª)         VI)
-                ▲              ▲
-                │              │
+        spanish post ◄── discourse ◄── cardinal ◄── ordinal ◄── roman
+        (gender +        (slash → or)  (decimal +   (1º, 3er,   (XXI,
+         apocope)                      thousands)    2ª)         VI)
+                                              ▲
+                                              │
                 fraction ◄─ range_ ◄─ sci ◄─ phone ◄─ units ◄─ economic
                 (1/4)       (90-00)  (1e10)  (+34..)  (GB,kg)  ($/%, +)
 ```
@@ -104,10 +104,11 @@ sequences them and applies the locale post-pass.
 | Ranges | `passes/range_.py` | 6 | `1990-2000` → `mil novecientos noventa a dos mil` | |
 | Math symbols | `passes/math.py` | es/en | `π`, `5 = 5` → `pi`, `5 igual a 5` | Operators need digit flanking |
 | Cardinals | `passes/cardinal.py` | 9 | `1.234,56` → locale-aware reading | Last numeric pass |
+| Prose slash | `passes/discourse.py` | es/en/fr/de/it/pt | `foo / bar` → `foo or bar` | Whitespace-flanked only |
 | ES concordance | `locales/es.py` | es | `300 personas` → `trescientas personas` | spaCy-backed if installed |
 | ES apocope | `locales/es.py` | es | `uno libro` → `un libro` | spaCy-backed if installed |
 
-Counts: 30 semiotic classes across 24 pass modules + 2 locale post-passes.
+Counts: 31 semiotic classes across 25 pass modules + 2 locale post-passes.
 
 ## File layout
 
@@ -175,6 +176,28 @@ two bugs surfaced by the NeMo comparison:
    like the start of a feminine noun). Fix: only fire apocope when the
    following token is an actual word (≥2 letters, alphabetic only).
    `locales/es.py` carries the new guard.
+3. **snake_case identifiers had their underscores eaten** — italic
+   stripping matched `_WORD_` inside `WAKE_WORD_MODEL_PATH` and
+   collapsed it to `WAKEWORDMODELPATH`. Fix: the underscore italic
+   alternative now requires non-word boundaries on both sides;
+   surviving identifier underscores are converted to spaces so TTS
+   reads "wake word model path". `cleaners.py` / `patterns.py`.
+4. **Numbered lists merged into a single sentence** — bullet/number
+   markers were dropped without leaving a sentence terminator, so the
+   final whitespace collapse produced run-on prose. Fix: insert a
+   period before the line break when the previous line lacks
+   terminal punctuation. `cleaners.py`.
+5. **Inline-code stripping produced double hyphens** — ``` `pb-` ```
+   followed by `-prefixed` glued to `pb--prefixed`. Fix: collapse
+   word-flanked `--+` runs to a single hyphen (spaced em-dashes
+   intact). `cleaners.py`.
+6. **`→` read as "implies"** — wrong reading for chat prose where the
+   arrow means "to" / "becomes". Fix: `→` now maps to "to" / "a";
+   strict logical implication uses `⇒`. `passes/math.py`.
+7. **Bare `/` between word tokens read as "slash"** — jarring in
+   chat content like `ask_session / kill_session`. Fix: new
+   `passes/discourse.py` substitutes whitespace-flanked slashes with
+   "or" / "o" after every other slash-consuming pass has run.
 
 ## Future direction
 
