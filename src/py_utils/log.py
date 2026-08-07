@@ -1,381 +1,332 @@
 """
-Terminal-first logger. TTY-aware, hierarchical, zero ceremony.
+The terminal-first, file-honest logger.
 
-No JSON, no stdlib logging, no k=v noise. Optimized for humans reading a
-terminal and for readable plain text when piped to a file or CI log.
+Doctrine (shared with go-utils and ts-utils, each in its own idiom):
 
-TTY vs non-TTY
-    TTY: colors, symbols, indentation, live spinners.
-    Non-TTY: plain text, no colors, no live updates, final summaries only.
-    Detected via sys.stdout.isatty(); overridable at runtime.
+Two independent decisions, both automatic, both forceable from the environment:
 
-Symbols
-    info  ℹ (blue)       success ✓ (green)    wait  ○ (bright white)
-    warn  ⚠ (yellow)     fail    ⨯ (red)      ready ▶ (green)
-    error ⨯ (red)        trace   » (magenta)  step  • (dim, indented)
+    LOG_FORMAT=human|record  how lines render. Default: human when stderr is a
+                             TTY (symbols, color, indentation), record when it
+                             is not (level words, plain text).
+    LOG_TIME=1|0             whether lines open with time. Default: on in
+                             record, off in human.
 
-Levels vs status verbs
-    Levels filter: trace < debug < info < warn < error < fatal.
-    Status verbs express outcome: success, fail, event, wait, ready.
-    Levels are for filtering noise; verbs are how you think.
+A file collecting evidence gets the full instant, 2026-08-07T12:34:56Z, UTC,
+because a triage line whose age is unknowable is worthless. A human who turns
+time on gets a dim local 14:32:56, because they know today's date. LOG_TIME=0
+in record mode is for sinks that stamp lines themselves (journald, Cloudflare).
+NO_COLOR/FORCE_COLOR only affect color inside human rendering.
 
-Structure
-    task(title)    — context manager: logs start+end with duration, indents body.
-    section(title) — context manager: grouping without start/end, indents body.
-    step(msg)      — single indented bullet inside a task/section.
-    Hierarchies, not flat lines.
+The record line is identical across the three languages by design, so logs
+from mixed-language systems share one grep surface:
 
-Context without k=v
-    with_prefix("api")  → prints `[api]` before messages
-    tag("auth")         → prints `[api auth]` combined with a prefix
-    Natural phrases and tags; no `op=`/`k=v` clutter.
+    2026-08-07T12:34:56Z WARN  [theater] scan failed: EOF
 
-    Numeric tokens from py_utils.format / py_utils.currency emit Rich markup
-    ([green]…[/], [red]…[/]) when color is enabled. The logger parses it in
-    TTY and strips it in plain text.
+UTC RFC3339, level word padded to five columns, scope in brackets when
+present. Level words instead of symbols: `rg WARN` beats `rg ⚠`.
 
-Errors and tracebacks
-    error(msg_or_exc, exc=False) — single line; Exception or exc=True prints
-    an indented (dim) traceback.
-    task() failures show a red closing line with duration, then the traceback.
+Levels filter noise: silent < error < warn < info < debug < trace, read live
+from LOG_LEVEL. An unknown level, format or time value raises: a confused
+program should scream. Verbs express outcome and are renderings, never
+levels: success ✓, ready ▶, wait ○, step • render at info; fail ⨯ at error.
 
-API
-    trace/debug/info/warn/warn_once/error/fatal
-    success/fail/event/wait/ready/step
-    section(title) / task(title) — context managers
-    progress(total=None, title=None) → handle.tick()/update(n)/done(success=True)
-    time(label) / time_end(label, level="trace")
-    with_prefix(text) / tag(*tags) → Logger
+scope() is the one composition primitive: log.scope("stt") returns a child
+that prints [stt] and reads STT_LOG_LEVEL before LOG_LEVEL, so one subsystem
+can be silenced or opened from the environment without touching code. Scopes
+nest; the most specific level wins.
 
-Config (runtime only)
-    set_level, enable_color, enable_live_updates, set_show_tracebacks, set_symbols
-    Format helpers auto-sign non-zero numbers; pass signed=False to drop the `+`.
+Structure stays first-class: task(title) logs start and end with duration and
+indents its body, section(title) groups without timing, step() is the
+indented bullet, progress() counts with a live line on a TTY and one honest
+summary line anywhere else. In record mode indentation and live updates stand
+down; the open/close lines remain, and under timestamps they become tracing.
 
-Why this shape
-    Fast visual parsing via symbols + indentation.
-    Status verbs map to how outcomes are communicated.
-    Zero config, sensible TTY/CI defaults, no handlers/formatters/k=v clutter.
-    Same semantics intentionally portable to ts-utils and go-utils.
+Everything goes to stderr. stdout is reserved for data, so piping a tool's
+output never chokes on a log line.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 import traceback
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
-from typing import Any, Callable, Optional
-import threading
+from datetime import datetime, timezone
+from typing import Any
 
-try:
-    from rich.console import Console
-    from rich.text import Text
-    from rich.theme import Theme
-    from rich.status import Status
-    from rich.markup import MarkupError
+_LEVELS = {"silent": 0, "error": 1, "warn": 2, "info": 3, "debug": 4, "trace": 5}
+_WORDS = {
+    "error": "ERROR",
+    "warn": "WARN",
+    "info": "INFO",
+    "debug": "DEBUG",
+    "trace": "TRACE",
+}
 
-    HAVE_RICH = True
-except Exception:  # pragma: no cover - optional dependency
-    HAVE_RICH = False
-    Console = None  # type: ignore
+_RESET = "\x1b[0m"
+_BOLD = "\x1b[1m"
+_DIM = "\x1b[2m"
+
+# verb -> (level, symbol, ansi color)
+_VERBS = {
+    "error": ("error", "⨯", "\x1b[31m"),
+    "fail": ("error", "⨯", "\x1b[31m"),
+    "warn": ("warn", "⚠", "\x1b[33m"),
+    "info": ("info", " ", "\x1b[37m"),
+    "success": ("info", "✓", "\x1b[32m"),
+    "wait": ("info", "○", "\x1b[37m"),
+    "ready": ("info", "▶", "\x1b[32m"),
+    "step": ("info", "•", "\x1b[90m"),
+    "section": ("info", "▸", "\x1b[90m"),
+    "debug": ("debug", "◦", "\x1b[90m"),
+    "trace": ("trace", "»", "\x1b[35m"),
+}
+
+_WARN_ONCE_CAP = 1024
 
 
-# Levels
-_LEVELS = {"trace": 10, "debug": 20, "info": 30, "warn": 40, "error": 50, "fatal": 60}
+def _parse_level(value: str) -> int:
+    level = _LEVELS.get(value.lower())
+    if level is None:
+        raise ValueError(
+            f"unknown log level: {value} (want silent/error/warn/info/debug/trace)"
+        )
+    return level
 
 
-def _env_level() -> str:
-    return os.getenv("LOG_LEVEL", "info").lower()
-
-
-def _isatty() -> bool:
+def _stderr_tty() -> bool:
     try:
-        return sys.stdout.isatty()
+        return sys.stderr.isatty()
     except Exception:
         return False
 
 
-@dataclass(slots=True)
-class _Config:
-    level: str = _env_level()
-    color_enabled: bool = (
-        os.getenv("NO_COLOR") is None or os.getenv("FORCE_COLOR") is not None
+def _color() -> bool:
+    if os.getenv("NO_COLOR"):
+        return False
+    if os.getenv("FORCE_COLOR"):
+        return True
+    return _stderr_tty()
+
+
+class _Output:
+    """The two per-process decisions, resolved once: stderr does not change
+    class mid-run, and deciding per line would tax every call."""
+
+    def __init__(self) -> None:
+        self._resolved = False
+        self.record = False
+        self.timestamps = False
+
+    def resolve(self) -> None:
+        if self._resolved:
+            return
+        fmt = os.getenv("LOG_FORMAT", "")
+        if fmt == "":
+            self.record = not _stderr_tty()
+        elif fmt == "human":
+            self.record = False
+        elif fmt == "record":
+            self.record = True
+        else:
+            raise ValueError(f"unknown LOG_FORMAT: {fmt} (want human/record)")
+
+        logtime = os.getenv("LOG_TIME", "")
+        if logtime == "":
+            self.timestamps = self.record
+        elif logtime in ("1", "true"):
+            self.timestamps = True
+        elif logtime in ("0", "false"):
+            self.timestamps = False
+        else:
+            raise ValueError(f"unknown LOG_TIME: {logtime} (want 1/0)")
+        self._resolved = True
+
+    def set_format(self, fmt: str) -> None:
+        self.resolve()
+        if fmt not in ("human", "record"):
+            raise ValueError(f"unknown log format: {fmt} (want human/record)")
+        self.record = fmt == "record"
+
+    def set_time(self, enabled: bool) -> None:
+        self.resolve()
+        self.timestamps = bool(enabled)
+
+
+_OUTPUT = _Output()
+
+
+def record_line(t: datetime, level_word: str, scope: str, message: str) -> str:
+    """Pure, so the format stays testable against the golden line the three
+    sibling libraries share."""
+    line = (
+        t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        + " "
+        + f"{level_word:<5}"
     )
-    live_updates: bool = True
-    show_tracebacks: bool = True
-    time_enabled: bool = False
-    symbols_enabled: bool = True
-    indent_width: int = 2
-
-
-_DEFAULT_THEME = Theme(
-    {
-        "info": "bold blue",
-        "warn": "bold yellow",
-        "error": "bold red",
-        "success": "bold green",
-        "ready": "bold green",
-        "wait": "bright_white",
-        "trace": "magenta",
-        "dim": "dim",
-    }
-)
+    if scope:
+        line += f" [{scope}]"
+    return line + " " + message
 
 
 class _State(threading.local):
     def __init__(self) -> None:
         super().__init__()
         self.indent: int = 0
-        self.warn_once_keys: set[str] = set()
-        self.timers: dict[str, float] = {}
+
+
+_STATE = _State()
+
+
+def _dur(ms: float) -> str:
+    if ms >= 10_000:
+        return f"{ms / 1000:.1f}s"
+    return f"{ms:.0f}ms"
 
 
 class Logger:
-    """TTY-focused logger with tasks, steps, and indentation.
+    def __init__(self, *, _scope: tuple[str, ...] = ()) -> None:
+        self._scope = _scope
+        self._warn_once: set[str] = set()
+        self._timers: dict[str, float] = {}
+        self._level_override: str | None = None
+        self.show_tracebacks = True
 
-    This logger writes to stdout. When attached to a terminal (TTY), it uses
-    colors and symbols (via Rich if installed). When not attached to a TTY,
-    it prints plain text and avoids live updates.
-    """
-
-    def __init__(
-        self, *, prefix: str | None = None, tags: tuple[str, ...] = ()
-    ) -> None:
-        self._cfg = _Config()
-        self._state = _State()
-        self._prefix = prefix
-        self._tags = tags
-
-        if HAVE_RICH:
-            self._console = Console(theme=_DEFAULT_THEME)
-        else:
-            self._console = None
-
-        self._sync_format_color()
+    # ----- composition -----
+    def scope(self, name: str) -> "Logger":
+        """Child that prints [name] and resolves {NAME}_LOG_LEVEL first."""
+        return Logger(_scope=self._scope + (name,))
 
     # ----- configuration -----
     def set_level(self, level: str) -> None:
-        self._cfg.level = level.lower()
+        _parse_level(level)
+        self._level_override = level.lower()
 
-    def get_level(self) -> str:
-        return self._cfg.level
+    def set_log_format(self, fmt: str) -> None:
+        _OUTPUT.set_format(fmt)
 
-    def enable_color(self, enabled: bool) -> None:
-        self._cfg.color_enabled = enabled
-        self._sync_format_color()
+    def set_log_time(self, enabled: bool) -> None:
+        _OUTPUT.set_time(enabled)
 
-    def enable_live_updates(self, enabled: bool) -> None:
-        self._cfg.live_updates = enabled
+    # ----- filtering -----
+    def _threshold(self) -> int:
+        if self._level_override is not None:
+            return _LEVELS[self._level_override]
+        for seg in reversed(self._scope):
+            key = "".join(c if c.isalnum() else "_" for c in seg.upper())
+            value = os.getenv(f"{key}_LOG_LEVEL")
+            if value:
+                return _parse_level(value)
+        return _parse_level(os.getenv("LOG_LEVEL", "info"))
 
-    def set_time_enabled(self, enabled: bool) -> None:
-        self._cfg.time_enabled = enabled
+    def _on(self, level: str) -> bool:
+        return _LEVELS[level] <= self._threshold()
 
-    def set_show_tracebacks(self, enabled: bool) -> None:
-        self._cfg.show_tracebacks = enabled
-
-    def set_symbols(self, enabled: bool) -> None:
-        self._cfg.symbols_enabled = enabled
-
-    # ----- derived props -----
-    @property
-    def _active_console(self) -> Optional[Console]:
-        return self._console if (HAVE_RICH and self._cfg.color_enabled) else None
-
-    @property
-    def _is_tty(self) -> bool:
-        if self._active_console is not None:
-            try:
-                return self._active_console.is_terminal
-            except Exception:
-                pass
-        return _isatty()
-
-    def _should_log(self, level: str) -> bool:
-        return _LEVELS[level] >= _LEVELS.get(self._cfg.level, 30)
-
-    # ----- helpers -----
-    def _indent_str(self) -> str:
-        return " " * (self._state.indent * self._cfg.indent_width)
-
-    def _prefix_text(self) -> str:
-        parts = []
-        if self._prefix:
-            parts.append(self._prefix)
-        if self._tags:
-            parts.extend(self._tags)
-        if not parts:
-            return ""
-        return f"[{' '.join(parts)}] "
-
-    def _symbol(self, kind: str) -> str:
-        if not self._cfg.symbols_enabled:
-            return ""
-        return {
-            "info": "ℹ",
-            "warn": "⚠",
-            "error": "⨯",
-            "fatal": "⨯",
-            "success": "✓",
-            "fail": "⨯",
-            "wait": "○",
-            "ready": "▶",
-            "trace": "»",
-            "step": "•",
-            "section": "▸",
-        }.get(kind, "")
-
-    def _color_active(self) -> bool:
-        return self._cfg.color_enabled and self._is_tty
-
-    def _sync_format_color(self) -> None:
-        try:
-            from . import format as _format
-
-            _format.set_color_enabled(self._color_active())
-        except Exception:
-            pass
-
-    def _coerce_text(self, message: Any) -> Text:
-        if isinstance(message, Text):
-            return message
-        msg_str = str(message)
-        try:
-            return Text.from_markup(msg_str, emoji=False)
-        except (MarkupError, ValueError):
-            return Text(msg_str)
-
-    def _write_line(self, kind: str, message: Any) -> None:
-        prefix = self._prefix_text()
-        indent = self._indent_str()
-        sym = self._symbol(kind)
-
-        if self._active_console and self._is_tty:
-            style = {
-                "info": "info",
-                "warn": "warn",
-                "error": "error",
-                "fatal": "error",
-                "success": "success",
-                "fail": "error",
-                "wait": "wait",
-                "ready": "ready",
-                "trace": "trace",
-                "step": "dim",
-                "section": "dim",
-            }.get(kind, "info")
-
-            pieces: list[Text] = []
-            if indent:
-                pieces.append(Text(indent))
-            if prefix:
-                pieces.append(Text(prefix, style="dim"))
-            if sym:
-                pieces.append(Text(f"{sym} ", style=style))
-            pieces.append(self._coerce_text(message))
-            self._active_console.print(Text.assemble(*pieces))
-        else:
-            # Plain text fallback
-            plain = str(message)
-            if HAVE_RICH:
-                try:
-                    plain = Text.from_markup(plain, emoji=False).plain
-                except (MarkupError, ValueError):
-                    plain = str(message)
-            base = f"{prefix}{(sym + ' ') if sym else ''}{plain}"
-            sys.stdout.write(indent + base + "\n")
-            sys.stdout.flush()
-
-    # ----- public logging -----
-    def trace(self, message: str) -> None:
-        if self._should_log("trace"):
-            self._write_line("trace", message)
-
-    def debug(self, message: str) -> None:
-        if self._should_log("debug"):
-            self._write_line("trace", message)  # use trace style for visual distinction
-
-    def info(self, message: str) -> None:
-        if self._should_log("info"):
-            self._write_line("info", message)
-
-    def warn(self, message: str) -> None:
-        if self._should_log("warn"):
-            self._write_line("warn", message)
-
-    def warn_once(self, message: str) -> None:
-        key = message
-        if key in self._state.warn_once_keys:
+    # ----- the one write door -----
+    def _write(self, verb: str, message: Any) -> None:
+        level, symbol, color = _VERBS[verb]
+        if not self._on(level):
             return
-        self._state.warn_once_keys.add(key)
+        _OUTPUT.resolve()
+        text = str(message)
+        scope = " ".join(self._scope)
+
+        if _OUTPUT.record:
+            line = f"{_WORDS[level]:<5}" + (f" [{scope}]" if scope else "") + " " + text
+            if _OUTPUT.timestamps:
+                line = (
+                    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                    + " "
+                    + line
+                )
+            sys.stderr.write(line + "\n")
+            sys.stderr.flush()
+            return
+
+        color_on = _color()
+        parts: list[str] = []
+        if _OUTPUT.timestamps:
+            stamp = time.strftime("%H:%M:%S")
+            parts.append(f"{_DIM}{stamp}{_RESET} " if color_on else stamp + " ")
+        if _STATE.indent:
+            parts.append("  " * _STATE.indent)
+        if verb == "step":
+            parts.append("  ")
+        sym = (
+            f"{color}{_BOLD}{symbol}{_RESET}" if color_on and symbol.strip() else symbol
+        )
+        parts.append(sym + " ")
+        if scope:
+            tag = f"[{scope}]"
+            parts.append((f"{_DIM}{tag}{_RESET}" if color_on else tag) + " ")
+        parts.append(text)
+        sys.stderr.write("".join(parts) + "\n")
+        sys.stderr.flush()
+
+    # ----- verbs -----
+    def trace(self, message: Any) -> None:
+        self._write("trace", message)
+
+    def debug(self, message: Any) -> None:
+        self._write("debug", message)
+
+    def info(self, message: Any) -> None:
+        self._write("info", message)
+
+    def warn(self, message: Any) -> None:
+        self._write("warn", message)
+
+    def warn_once(self, message: Any) -> None:
+        key = str(message)
+        if key in self._warn_once:
+            return
+        # Bounded: a daemon emitting unbounded distinct warnings must not
+        # leak; on overflow the set purges and an old warning firing once
+        # more is the honest failure mode.
+        if len(self._warn_once) >= _WARN_ONCE_CAP:
+            self._warn_once.clear()
+        self._warn_once.add(key)
         self.warn(message)
 
     def error(self, msg_or_exc: Any, *, exc: bool | None = None) -> None:
-        if not self._should_log("error"):
-            return
-        message = str(msg_or_exc)
-        self._write_line("error", message)
+        self._write("error", msg_or_exc)
         want_tb = exc or isinstance(msg_or_exc, BaseException)
-        if want_tb and self._cfg.show_tracebacks:
-            tb = traceback.format_exc()
-            with self._with_extra_indent():
-                for line in tb.strip().splitlines():
-                    self._write_line("step", line)
+        if want_tb and self.show_tracebacks:
+            for line in traceback.format_exc().strip().splitlines():
+                self.step(line)
 
-    def fatal(
-        self, msg_or_exc: Any, *, exit_code: int = 1, exc: bool | None = None
-    ) -> None:
-        self.error(msg_or_exc, exc=exc)
-        try:
-            sys.exit(exit_code)
-        except SystemExit:
-            raise
+    def success(self, message: Any) -> None:
+        self._write("success", message)
 
-    def success(self, message: str) -> None:
-        if self._should_log("info"):
-            self._write_line("success", message)
+    def fail(self, message: Any) -> None:
+        self._write("fail", message)
 
-    def fail(self, message: str) -> None:
-        if self._should_log("error"):
-            self._write_line("fail", message)
+    def wait(self, message: Any) -> None:
+        self._write("wait", message)
 
-    def event(self, message: str) -> None:
-        if self._should_log("info"):
-            self._write_line("info", message)
+    def ready(self, message: Any) -> None:
+        self._write("ready", message)
 
-    def wait(self, message: str) -> None:
-        if self._should_log("info"):
-            self._write_line("wait", message)
+    def step(self, message: Any) -> None:
+        self._write("step", message)
 
-    def ready(self, message: str) -> None:
-        if self._should_log("info"):
-            self._write_line("ready", message)
-
-    # ----- indentation & grouping -----
+    # ----- structure -----
     @contextmanager
-    def _with_extra_indent(self):
-        self._state.indent += 1
+    def section(self, title: str):
+        self._write("section", title)
+        _STATE.indent += 1
         try:
             yield
         finally:
-            self._state.indent -= 1
-
-    def step(self, message: str) -> None:
-        with self._with_extra_indent():
-            self._write_line("step", message)
-
-    @contextmanager
-    def section(self, title: str):
-        self._write_line("section", title)
-        with self._with_extra_indent():
-            yield
+            _STATE.indent -= 1
 
     @contextmanager
     def task(self, title: str):
         start = time.perf_counter()
-        self._write_line("wait", title)
-        self._state.indent += 1
+        self._write("wait", title)
+        _STATE.indent += 1
         failed = False
         try:
             yield
@@ -383,38 +334,29 @@ class Logger:
             failed = True
             raise
         finally:
-            self._state.indent -= 1
-            dur_ms = (time.perf_counter() - start) * 1000.0
-            from .format import duration as _dur
-
+            _STATE.indent -= 1
+            ms = (time.perf_counter() - start) * 1000.0
             if failed:
-                self._write_line("fail", f"{title} ({_dur(dur_ms)})")
-                if self._cfg.show_tracebacks:
-                    tb = traceback.format_exc()
-                    with self._with_extra_indent():
-                        for line in tb.strip().splitlines():
-                            self._write_line("step", line)
+                self._write("fail", f"{title} ({_dur(ms)})")
+                if self.show_tracebacks:
+                    for line in traceback.format_exc().strip().splitlines():
+                        self.step(line)
             else:
-                self._write_line("success", f"{title} ({_dur(dur_ms)})")
-
-    def step_run(self, title: str, fn: Callable[..., Any], *args, **kwargs) -> Any:
-        with self.task(title):
-            return fn(*args, **kwargs)
+                self._write("success", f"{title} ({_dur(ms)})")
 
     # ----- timers -----
     def time(self, label: str) -> None:
-        self._state.timers[label] = time.perf_counter()
+        if len(self._timers) >= _WARN_ONCE_CAP:
+            self._timers.clear()
+        self._timers[label] = time.perf_counter()
 
     def time_end(self, label: str, *, level: str = "trace") -> float:
-        start = self._state.timers.pop(label, None)
+        start = self._timers.pop(label, None)
         if start is None:
             self.warn(f"Timer '{label}' does not exist")
             return 0.0
         ms = (time.perf_counter() - start) * 1000.0
-        from .format import duration as _dur
-
-        if self._should_log(level):
-            self._write_line("trace", f"{label}: {_dur(ms)}")
+        self._write(level if level in _VERBS else "trace", f"{label}: {_dur(ms)}")
         return ms
 
     # ----- progress -----
@@ -427,84 +369,40 @@ class Logger:
             self.title = title or ""
             self.count = 0
             self._start = time.perf_counter()
-            self._status: Optional[Status] = None
+            _OUTPUT.resolve()
+            self._live = not _OUTPUT.record and _stderr_tty() and logger._on("info")
 
-            if (
-                HAVE_RICH
-                and logger._active_console is not None
-                and logger._is_tty
-                and logger._cfg.live_updates
-            ):
-                msg = (
-                    logger._indent_str()
-                    + (logger._prefix_text() or "")
-                    + f"{self.title}…"
-                )
-                self._status = logger._active_console.status(msg, spinner="dots")
-                self._status.start()
+        def _suffix(self) -> str:
+            return (
+                f"{self.count}/{self.total}"
+                if self.total is not None
+                else str(self.count)
+            )
 
         def tick(self) -> None:
             self.update(1)
 
         def update(self, n: int = 1) -> None:
             self.count += n
-            if self._status is not None:
-                suffix = (
-                    f" {self.count}/{self.total}"
-                    if self.total is not None
-                    else f" {self.count}"
-                )
-                msg = (
-                    self.logger._indent_str()
-                    + (self.logger._prefix_text() or "")
-                    + f"{self.title}{suffix}…"
-                )
-                self._status.update(msg)
+            if self._live:
+                sys.stderr.write(f"\r○ {self.title} {self._suffix()}…")
+                sys.stderr.flush()
 
         def done(self, *, success: bool = True) -> None:
-            if self._status is not None:
-                self._status.stop()
-            dur_ms = (time.perf_counter() - self._start) * 1000.0
-            from .format import duration as _dur
-
-            suffix = (
-                f" ({self.count}/{self.total}, {_dur(dur_ms)})"
-                if self.total is not None
-                else f" ({self.count}, {_dur(dur_ms)})"
-            )
+            if self._live:
+                sys.stderr.write("\r\x1b[2K")
+            ms = (time.perf_counter() - self._start) * 1000.0
             line = (
-                f"{self.title}{suffix}"
+                f"{self.title} ({self._suffix()}, {_dur(ms)})"
                 if self.title
-                else (
-                    f"{self.count}/{self.total} ({_dur(dur_ms)})"
-                    if self.total is not None
-                    else f"{self.count} ({_dur(dur_ms)})"
-                )
+                else f"{self._suffix()} ({_dur(ms)})"
             )
-            if success:
-                self.logger._write_line("success", line)
-            else:
-                self.logger._write_line("fail", line)
+            self.logger._write("success" if success else "fail", line)
 
     def progress(
         self, total: int | None = None, title: str | None = None
     ) -> "Logger._Progress":
         return Logger._Progress(self, total, title)
 
-    # ----- context binding -----
-    def with_prefix(self, text: str) -> "Logger":
-        return self._child(prefix=text, tags=self._tags)
 
-    def tag(self, *tags: str) -> "Logger":
-        return self._child(prefix=self._prefix, tags=self._tags + tuple(tags))
-
-    def _child(self, *, prefix: str | None, tags: tuple[str, ...]) -> "Logger":
-        child = Logger(prefix=prefix, tags=tags)
-        child._cfg = replace(self._cfg)
-        child._state = self._state  # share indent, timers, warn_once within thread
-        child._console = self._console
-        return child
-
-
-# Global logger instance
 log = Logger()

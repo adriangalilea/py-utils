@@ -50,7 +50,22 @@ def demonstrate_formatting() -> None:
         log.info(f"Change {percentage(15.234)}")
 
 
+def assert_record_golden() -> None:
+    """The record line is the shared grep surface of go-utils, ts-utils and
+    py-utils — this golden line must match theirs byte for byte."""
+    from datetime import datetime, timezone
+
+    from py_utils.log import record_line
+
+    ts = datetime(2026, 8, 7, 12, 34, 56, tzinfo=timezone.utc)
+    got = record_line(ts, "WARN", "theater", "scan failed: EOF")
+    want = "2026-08-07T12:34:56Z WARN  [theater] scan failed: EOF"
+    assert got == want, f"{got!r} != {want!r}"
+    assert record_line(ts, "ERROR", "", "boom") == "2026-08-07T12:34:56Z ERROR boom"
+
+
 if __name__ == "__main__":
+    assert_record_golden()
     demonstrate_logger()
     demonstrate_formatting()
     log.success("Demo finished")
