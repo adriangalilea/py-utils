@@ -3,7 +3,6 @@
 
 # uv / Python project
 .venv/
-uv.lock
 .python-version
 
 # Python artifacts
