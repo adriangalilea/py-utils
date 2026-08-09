@@ -2,6 +2,8 @@
 
 Generic Python utilities for DX — terminal logger, typed boundary errors, env var manager (KEV), XDG paths, formatting helpers. Python 3.12+.
 
+The sibling of [go-utils](https://github.com/adriangalilea/go-utils) and [ts-utils](https://github.com/adriangalilea/ts-utils). The logging doctrine the three share, and the harness that proves they emit the same record line, live in [utils](https://github.com/adriangalilea/utils).
+
 ## Install
 
 ```bash
