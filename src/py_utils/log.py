@@ -323,6 +323,15 @@ def _error(e: BaseException, seen: frozenset[int]) -> str:
     return _object(pairs)
 
 
+def _set_order(s: set[Any] | frozenset[Any]) -> list[Any]:
+    """A set's items sorted, so the same set always writes the same array;
+    iteration order when its items do not compare (mixed types)."""
+    try:
+        return sorted(s)
+    except TypeError:
+        return list(s)
+
+
 def _json(v: Any, seen: frozenset[int]) -> str:
     """A field value as JSON text by the contract's rules: maps sorted at every
     depth, an error's keys in their fixed order. `seen` holds the containers on
@@ -346,13 +355,16 @@ def _json(v: Any, seen: frozenset[int]) -> str:
     if isinstance(v, Decimal):
         return _string(str(v))
     is_dataclass = dataclasses.is_dataclass(v) and not isinstance(v, type)
-    if not (isinstance(v, (BaseException, dict, list, tuple)) or is_dataclass):
+    containers = (BaseException, dict, list, tuple, set, frozenset)
+    if not (isinstance(v, containers) or is_dataclass):
         return _string(str(v))
     if id(v) in seen:
         return '"[circular]"'
     inner = seen | {id(v)}
     if isinstance(v, BaseException):
         return _error(v, inner)
+    if isinstance(v, (set, frozenset)):
+        return "[" + ",".join(_json(x, inner) for x in _set_order(v)) + "]"
     if isinstance(v, (list, tuple)):
         return "[" + ",".join(_json(x, inner) for x in v) + "]"
     items = (

@@ -179,6 +179,10 @@ def check_values() -> None:
             pair=(1, "a"),
             loop=loop,
             path=Path("/tmp"),
+            tags={"b", "c", "a"},
+            frozen=frozenset({3, 1, 2}),
+            mixed={1, "a"},
+            keyed={2: "two", 1: "one"},
         )
     )
     f = e["fields"]
@@ -194,6 +198,11 @@ def check_values() -> None:
     assert f["pair"] == [1, "a"]
     assert f["loop"] == [1, "[circular]"]
     assert f["path"] == "/tmp"
+    # Sets are arrays, sorted when their items compare, iteration order otherwise.
+    assert f["tags"] == ["a", "b", "c"] and f["frozen"] == [1, 2, 3]
+    assert sorted(f["mixed"], key=str) == [1, "a"]
+    # Non-string keys: each key's string form, sorted.
+    assert list(f["keyed"]) == ["1", "2"]
 
 
 def check_errors() -> None:
@@ -263,6 +272,19 @@ def check_errors() -> None:
 
     # `raise ... from None` hides the context, as Python's own traceback does.
     assert "cause" not in e["fields"]["suppressed"]
+
+    # An empty context is none; so is an absent status.
+    bare = SourcedError(source="db", operation="ping", message="down")
+    [e] = events(lambda: log.error("failed", err=bare))
+    assert list(e["fields"]["err"]) == ["type", "message", "source", "operation"]
+
+    # Python only lets an exception be a cause, so every cause has the error shape.
+    try:
+        RuntimeError("x").__cause__ = "not an error"  # type: ignore[assignment]
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("Python accepted a non-exception __cause__")
 
 
 def check_spans() -> None:
@@ -355,6 +377,18 @@ def check_failed_span() -> None:
     assert (err["type"], err["message"]) == ("RuntimeError", "boom")
     # The stack starts at the caller's code, not inside the logger.
     assert "py_utils/log.py" not in err["stack"], err["stack"]
+
+    # Anything raised ends the block failed, not only Exception subclasses.
+    def interrupted() -> None:
+        try:
+            with log.span("wait for input"):
+                raise KeyboardInterrupt
+        except KeyboardInterrupt:
+            pass
+
+    _, end = events(interrupted)
+    assert end["status"] == "error"
+    assert end["fields"]["err"]["type"] == "KeyboardInterrupt"
 
 
 def check_filtered_spans() -> None:

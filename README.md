@@ -122,7 +122,7 @@ s.end()                       # or s.end(err)
 ✓ release 254ms published=false version=0.7.0
 ```
 
-The default is human when stderr is a TTY, json otherwise. Field values follow one set of rules: maps sorted at every depth, exceptions as `type`, `message`, `stack`, `cause` (and a `SourcedError`'s `source`, `operation`, `status`, `context`), `datetime` as a UTC millisecond string, `timedelta` as milliseconds, bytes (base64), `Decimal` and integers beyond 2^53 as strings, NaN and infinities as strings, dataclasses as objects, a value that contains itself as `"[circular]"`, anything else as `str()`.
+The default is human when stderr is a TTY, json otherwise. Field values follow one set of rules: maps sorted at every depth, exceptions as `type`, `message`, `stack`, `cause` (and a `SourcedError`'s `source`, `operation`, `status`, `context`), `datetime` as a UTC millisecond string, `timedelta` as milliseconds, bytes (base64), `Decimal` and integers beyond 2^53 as strings, NaN and infinities as strings, dataclasses as objects, sets as arrays (sorted when their items compare), non-string map keys as their string form, a value that contains itself as `"[circular]"`, anything else as `str()`.
 
 **Configuration.** Each variable has a setter that sets the program's default; the environment overrides it. Values match without regard to case (`LOG_LEVEL=DEBUG` is `debug`), an empty variable is unset, and an unknown value raises `ValueError`.
 
