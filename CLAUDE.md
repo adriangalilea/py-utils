@@ -11,4 +11,9 @@ No pytest. Correctness comes from offensive primitives (`require`/`invariant`/`e
 
 ## Logger
 
-`log.py` implements the family logging doctrine shared with go-utils and ts-utils (full spec in its header): stderr sink, human/record renderings decided by TTY, the byte-identical record line `2026-08-07T12:34:56Z WARN  [scope] message`, LOG_FORMAT/LOG_TIME knobs, `scope()` children reading `{SCOPE}_LOG_LEVEL`, and the structure primitives (task/section/step/progress) that are py-utils' own strength. Zero dependencies (Rich dropped). The record golden line is asserted in `example_usage.py`.
+`log.py` writes the event stream go-utils and ts-utils write byte for byte. The contract is `~/Developer/utils/README.md` (schema and harness beside it); `log.py`'s header states it for Python. Every verb is `log.info("message", **fields)`, message positional-only. `scope(name)` names a subsystem, `span(name, **fields)` is a context manager and `begin(name, **fields)` / `end(err=None)` the open form; a span is a logger with `span`, `begin`, `set`, `traceparent`, `end`. `join(traceparent)` continues a remote trace, `TRACEPARENT` at start joins root spans. No ambient context: a function that logs inside a span takes the span. Process settings are `log.set_log_level/format/time/service`, each overridden by its environment variable. No dependencies.
+
+Proof, in this order, after any change to `log.py`:
+
+- `uv run python example_usage.py` asserts every rule (key order, sorting, field values, spans, failed and filtered spans, join, TRACEPARENT, levels, setters) and prints a human rendering.
+- `LOCAL=~/Developer ~/Developer/utils/conformance/run.sh` must print `py PASS`.

@@ -1,14 +1,13 @@
 [project]
 name = "adrian-utils"
-version = "0.6.0"
-description = "Generic Python utilities — KEV environment manager, XDG directories, persistent dedup filter, DX-first terminal logger, number/percentage/currency formatting, TTS text normalization (say). Python 3.12+."
+version = "0.7.0"
+description = "Generic Python utilities — KEV environment manager, XDG directories, persistent dedup filter, structured logger (lines and spans as one JSON or human event stream, shared with go-utils and ts-utils), number/percentage/currency formatting, TTS text normalization (say). Python 3.12+."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
     { name = "Adrian Galilea", email = "adriangalilea@gmail.com" },
 ]
 dependencies = [
-    "rich>=14.1.0",
     "ruff>=0.13.2",
 ]
 

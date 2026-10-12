@@ -90,15 +90,8 @@ class PostconditionError(ContractError):
     """An ensure() check failed — function failed to deliver its promise."""
 
 
-def _format_context(context: dict[str, Any]) -> str:
-    if not context:
-        return ""
-    return " ".join(f"{k}={v!r}" for k, v in context.items())
-
-
 def _fail(exc_cls: type[ContractError], message: str, context: dict[str, Any]) -> None:
-    ctx = _format_context(context)
-    log.error(f"{message} [{ctx}]" if ctx else message)
+    log.error(message, **context)
     raise exc_cls(message, context)
 
 
@@ -257,15 +250,15 @@ def boundary(source: str, operation: str | None = None) -> Callable[[F], F]:
                 status = getattr(e, "status_code", None) or getattr(
                     e, "http_status", None
                 )
-                status_part = f" status={status}" if status is not None else ""
-                log.error(f"[{source}:{op}{status_part}] {type(e).__name__}: {e}")
-                raise SourcedError(
+                wrapped = SourcedError(
                     source=source,
                     operation=op,
                     message=str(e) or type(e).__name__,
                     status=status,
                     cause=e,
-                ) from e
+                )
+                log.error("external call failed", err=wrapped)
+                raise wrapped from e
 
         return cast(F, wrapper)
 

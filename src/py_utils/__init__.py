@@ -3,7 +3,7 @@ py_utils: Generic Python utilities (Python 3.12+)
 
 - KEV: Redis-style KV store for environment variables
 - XDG: Base Directory paths with spec-compliant fallbacks
-- Logger: TTY-focused with tasks/steps/indentation, symbols, colors
+- Logger: one event stream of lines and spans, JSON or human, shared with go-utils and ts-utils
 - Format: Number/percentage formatting helpers
 - Currency: Formatting utilities with optimal decimals
 """
@@ -11,6 +11,7 @@ py_utils: Generic Python utilities (Python 3.12+)
 from .log import (
     log,
     Logger,
+    Span,
 )
 
 from .format import (
@@ -81,6 +82,7 @@ __all__ = [
     # logger
     "log",
     "Logger",
+    "Span",
     # format
     "number",
     "number_plain",

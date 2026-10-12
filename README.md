@@ -1,8 +1,8 @@
 # adrian-utils
 
-Generic Python utilities for DX — terminal logger, typed boundary errors, env var manager (KEV), XDG paths, formatting helpers. Python 3.12+.
+Generic Python utilities for DX — structured logger, typed boundary errors, env var manager (KEV), XDG paths, formatting helpers. Python 3.12+.
 
-The sibling of [go-utils](https://github.com/adriangalilea/go-utils) and [ts-utils](https://github.com/adriangalilea/ts-utils). The logging doctrine the three share, and the harness that proves they emit the same record line, live in [utils](https://github.com/adriangalilea/utils).
+The sibling of [go-utils](https://github.com/adriangalilea/go-utils) and [ts-utils](https://github.com/adriangalilea/ts-utils). The logging contract the three share, and the harness that proves they write the same event stream, live in [utils](https://github.com/adriangalilea/utils).
 
 ## Install
 
@@ -23,12 +23,12 @@ uv add -e .
 ```python
 from py_utils import log, kev, xdg, boundary, SourcedError, must, usd, percentage
 
-# Logger — narrate work, not state
-log.info("Connected to postgres:5432")
-with log.task("Build assets"):
-    log.step("Transpiling")
-    log.step("Bundling")
-log.success("Deployed")
+# Logger: a message, then fields
+log.info("connected", host="postgres", port=5432)
+with log.span("build assets") as s:
+    s.step("transpiling")
+    s.step("bundling")
+log.success("deployed")
 
 # Typed boundary errors — every external call wears its source
 @boundary("stripe")
@@ -38,7 +38,7 @@ def charge(customer_id: str, amount: int):
 try:
     charge("cus_ABC", 500)
 except SourcedError as e:
-    log.error(f"[{e.source}] {e.operation} failed: {e}")  # typed forensics, not a string blob
+    log.error("charge failed", err=e)  # source, operation, status, context, cause: all in the event
 
 # Optional[T] → T with context
 user = must(users.get(user_id), "user vanished", user_id=user_id)
@@ -56,6 +56,86 @@ state_dir = xdg.state / "myapp"
 usd(1234.56)          # "+$1,234.56"
 percentage(15.234)    # "+15.2%"
 ```
+
+### Logger
+
+A program's telemetry is one stream of events: a log line is an event at an instant, a span is a piece of work written as a start and an end event, and every line written inside a span names it. go-utils and ts-utils write the same stream byte for byte; the contract and the harness that checks it live in [utils](https://github.com/adriangalilea/utils).
+
+Every verb takes a message, then fields. The message is positional-only, so any field name works:
+
+```python
+from py_utils import log
+
+log.info("ready")
+log.warn("retrying", attempt=2)
+log.error("charge failed", err=e)
+```
+
+| verb | level | human |
+|---|---|---|
+| `error`, `fail` | error | `⨯` |
+| `warn`, `warn_once` (once per message and scope) | warn | `⚠` |
+| `info` | info | |
+| `success` | info | `✓` |
+| `wait` | info | `○` |
+| `ready` | info | `▶` |
+| `step` | info | `•`, indented |
+| `debug` | debug | `◦` |
+| `trace` | trace | `»` |
+
+**Scopes** name subsystems: `log.scope("api").scope("auth")` writes `"scope":["api","auth"]`.
+
+**Spans** are loggers. What is written through the span belongs to it; there is no ambient context, so a function that logs inside a span takes the span:
+
+```python
+with log.span("charge", amount=a) as s:
+    s.warn("retrying", attempt=2)
+    with s.span("stripe") as c:
+        c.info("posted")
+    s.set(receipt=r)          # carried on the end event
+```
+
+An exception escaping the block ends the span failed (`status: error`, the exception in `fields.err`) and propagates. Work that does not fit a block opens and ends the span by hand, once (a second `end` raises):
+
+```python
+s = log.begin("upload", size=n)
+...
+s.end()                       # or s.end(err)
+```
+
+**Traces cross processes** explicitly. `s.traceparent()` is the W3C value to send in an HTTP `traceparent` header or a child's `TRACEPARENT`; `log.join(value)` returns a logger whose spans are children of that remote span (`None` returns `log`, a malformed value is ignored with one warn). A process started with `TRACEPARENT` set joins it for its root spans with no code.
+
+**Output** goes to stderr. `LOG_FORMAT=json` writes one event per line:
+
+```json
+{"time":"2026-10-12T12:20:39.123Z","level":"warn","verb":"warn","msg":"retrying","service":"checkout","scope":["payments"],"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","fields":{"attempt":2}}
+```
+
+`LOG_FORMAT=human` writes symbols, colour (`NO_COLOR`, `FORCE_COLOR`), dim `key=value` fields, a raised exception's traceback under its line, and spans with what they hold indented:
+
+```
+○ release version=0.7.0
+    • building wheel
+  ○ checks
+      ruff result=clean
+  ✓ checks 41ms
+✓ release 254ms published=false version=0.7.0
+```
+
+The default is human when stderr is a TTY, json otherwise. Field values follow one set of rules: maps sorted at every depth, exceptions as `type`, `message`, `stack`, `cause` (and a `SourcedError`'s `source`, `operation`, `status`, `context`), `datetime` as a UTC millisecond string, `timedelta` as milliseconds, bytes (base64), `Decimal` and integers beyond 2^53 as strings, NaN and infinities as strings, dataclasses as objects, a value that contains itself as `"[circular]"`, anything else as `str()`.
+
+**Configuration.** Each variable has a setter that sets the program's default; the environment overrides it. An unknown value raises `ValueError`.
+
+| variable | setter | values |
+|---|---|---|
+| `LOG_LEVEL`, `{SCOPE}_LOG_LEVEL` | `log.set_log_level` | `silent` `error` `warn` `info` `debug` `trace`, default `info` |
+| `LOG_FORMAT` | `log.set_log_format` | `human` `json` |
+| `LOG_TIME` | `log.set_log_time` | `1` `0`: a dim local `HH:MM:SS` before human lines |
+| `LOG_SERVICE` | `log.set_log_service` | the program's name, default the script's file name without extension |
+
+A scoped event reads its level live from the most specific variable set: scope `["api", "auth"]` reads `API_AUTH_LOG_LEVEL`, then `API_LOG_LEVEL`, then `LOG_LEVEL`, then `set_log_level`, then `info`. A span hidden by its level hands its lines and child spans to its nearest shown ancestor, so a viewer never meets a parent that is not there.
+
+The runnable proof of every rule above is `uv run python example_usage.py`.
 
 ### Typed errors
 
@@ -91,7 +171,7 @@ for doc in docs:
     try:
         save({"summary": summarize(doc.text)})
     except SourcedError as e:
-        log.error(f"[{e.source}:{e.operation}] skip {doc.id} — {e}")
+        log.error("skipping doc", doc=doc.id, err=e)
         if e.source == "stripe" and e.status == 402:
             continue        # card declined, keep going
         if e.source == "postgres":
@@ -289,7 +369,7 @@ set_color_enabled(None)   # auto
 
 ```bash
 uv add -e .
-uv run python example_usage.py       # logger + formatting
+uv run python example_usage.py       # logger contract, asserted; human rendering
 uv run python example_offensive.py   # offensive primitives
 ```
 

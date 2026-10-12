@@ -24,6 +24,7 @@ if str(SRC_PATH) not in sys.path:
 from py_utils import (  # noqa: E402
     ContractError,
     InvariantError,
+    Logger,
     PostconditionError,
     PreconditionError,
     SourcedError,
@@ -36,7 +37,7 @@ from py_utils import (  # noqa: E402
 )
 
 
-def expect(exc_type: type[BaseException], label: str):
+def expect(s: Logger, exc_type: type[BaseException], label: str):
     """Context helper: assert that `exc_type` is raised inside the `with` block."""
 
     class _Expect:
@@ -50,62 +51,62 @@ def expect(exc_type: type[BaseException], label: str):
                 raise SystemExit(
                     f"{label}: expected {exc_type.__name__}, got {et.__name__}"
                 )
-            log.info(f"  → caught {et.__name__}: {ev}")
+            s.step("caught", err=ev)
             return True
 
     return _Expect()
 
 
-def demo_require() -> None:
-    log.info("require() — preconditions")
+def demo_require(s: Logger) -> None:
+    s.info("require() checks preconditions")
 
     def charge(amount: int) -> None:
         require(amount > 0, "amount must be positive", amount=amount)
 
     charge(100)
-    log.info("  → charge(100) passed")
+    s.step("charge passed", amount=100)
 
-    with expect(PreconditionError, "require"):
+    with expect(s, PreconditionError, "require"):
         charge(-5)
 
 
-def demo_invariant() -> None:
-    log.info("invariant() — internal state")
+def demo_invariant(s: Logger) -> None:
+    s.info("invariant() checks internal state")
 
     balance = 100
     balance -= 50
     invariant(balance >= 0, "balance went negative", balance=balance)
-    log.info(f"  → balance={balance} invariant holds")
+    s.step("invariant holds", balance=balance)
 
-    with expect(InvariantError, "invariant"):
+    with expect(s, InvariantError, "invariant"):
         invariant(False, "simulated bug", where="demo_invariant")
 
 
-def demo_ensure() -> None:
-    log.info("ensure() — postconditions")
+def demo_ensure(s: Logger) -> None:
+    s.info("ensure() checks postconditions")
 
     def load(user_id: str) -> dict[str, str]:
         result: dict[str, str] | None = None  # simulate lookup failure
         ensure(result is not None, "load returned None", user_id=user_id)
         return result  # type: ignore[return-value]
 
-    with expect(PostconditionError, "ensure"):
+    with expect(s, PostconditionError, "ensure"):
         load("u_123")
 
 
-def demo_must() -> None:
-    log.info("must() — Optional[T] unwrap")
+def demo_must(s: Logger) -> None:
+    s.info("must() unwraps Optional[T]")
 
     users: dict[str, str] = {"u_1": "alice"}
     name = must(users.get("u_1"), "user not found", user_id="u_1")
-    log.info(f"  → must returned {name!r}")
+    s.step("must returned", name=name)
 
-    with expect(InvariantError, "must"):
+    with expect(s, InvariantError, "must"):
         must(users.get("u_missing"), "user not found", user_id="u_missing")
 
 
-def demo_sourced_error() -> None:
-    log.info("SourcedError — raise explicitly")
+def demo_sourced_error(s: Logger) -> None:
+    s.info("SourcedError raised explicitly")
 
     def fake_api_call() -> None:
         try:
@@ -129,51 +130,51 @@ def demo_sourced_error() -> None:
         assert e.status == 402
         assert e.context["customer_id"] == "cus_ABC"
         assert isinstance(e.__cause__, ValueError)
-        log.info(f"  → source={e.source} status={e.status} context={e.context}")
-        log.info(f"  → to_dict={e.to_dict()}")
+        s.step("caught", err=e)
+        s.step("transport form", to_dict=e.to_dict())
 
 
-def demo_boundary_wraps() -> None:
-    log.info("@boundary — auto-wraps raw exceptions")
+def demo_boundary_wraps(s: Logger) -> None:
+    s.info("@boundary wraps raw exceptions")
 
     @boundary("openai")
     def complete(prompt: str) -> str:
         raise RuntimeError("rate limited")
 
-    with expect(SourcedError, "boundary wrap"):
+    with expect(s, SourcedError, "boundary wrap"):
         complete("hello")
 
 
-def demo_boundary_passthrough() -> None:
-    log.info("@boundary — ContractError passes through unwrapped")
+def demo_boundary_passthrough(s: Logger) -> None:
+    s.info("@boundary lets ContractError pass through unwrapped")
 
     @boundary("db")
     def query(limit: int) -> list[int]:
         require(limit > 0, "limit must be positive", limit=limit)
         return []
 
-    with expect(PreconditionError, "boundary passthrough"):
+    with expect(s, PreconditionError, "boundary passthrough"):
         query(-1)
 
 
-def demo_hierarchy() -> None:
-    log.info("Exception hierarchy — ContractError subclasses AssertionError")
+def demo_hierarchy(s: Logger) -> None:
+    s.info("ContractError subclasses AssertionError")
     assert issubclass(PreconditionError, ContractError)
     assert issubclass(ContractError, AssertionError)
-    log.info("  → PreconditionError → ContractError → AssertionError ✓")
+    s.step("PreconditionError, ContractError, AssertionError: hierarchy holds")
 
 
 def main() -> None:
-    with log.task("offensive programming demo"):
-        demo_require()
-        demo_invariant()
-        demo_ensure()
-        demo_must()
-        demo_sourced_error()
-        demo_boundary_wraps()
-        demo_boundary_passthrough()
-        demo_hierarchy()
-    log.info("all offensive primitives verified")
+    with log.span("offensive programming demo") as s:
+        demo_require(s)
+        demo_invariant(s)
+        demo_ensure(s)
+        demo_must(s)
+        demo_sourced_error(s)
+        demo_boundary_wraps(s)
+        demo_boundary_passthrough(s)
+        demo_hierarchy(s)
+    log.success("all offensive primitives verified")
 
 
 if __name__ == "__main__":
