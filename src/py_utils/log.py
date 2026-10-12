@@ -59,15 +59,27 @@ when stderr is a TTY, json otherwise. LOG_TIME=1 puts a dim local HH:MM:SS
 before human lines; json always carries time. LOG_SERVICE names the program,
 else the script's file name without its extension.
 
+Shipping. LOG_SHIP=<url> also POSTs every event that passes its threshold
+there: the json line, whatever stderr renders, in batches of lines joined by
+"\\n" (text/plain;charset=utf-8, at most 64 KB and 50 events), with
+LOG_SHIP_TOKEN as the bearer. A batch leaves 2s after its first event, at 50,
+when a span opened outside any span of this process ends (a root, or one
+joined from its caller: a request's trace leaves together), and at exit
+(atexit). flush_log() sends what waits and returns once nothing is in flight,
+for a process that leaves through os._exit. Shipping never blocks a write and
+never raises: a refused or lost batch is one warn_once, scope ["ship"], with
+no retry, and an event over 64 KB stays on stderr and warns once.
+
 Each variable has a setter (set_log_format, set_log_time, set_log_level,
-set_log_service) that sets the program's default; the environment overrides
-it. Values match without regard to case, an empty variable is unset, and an
+set_log_service, set_log_ship, set_log_ship_token) that sets the program's
+default; the environment overrides it. Values match without regard to case, an empty variable is unset, and an
 unknown value in either raises ValueError. Everything goes to stderr; stdout
 is for data.
 """
 
 from __future__ import annotations
 
+import atexit
 import base64
 import dataclasses
 import functools
@@ -80,6 +92,9 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -128,6 +143,8 @@ class _Defaults:
         self.format: str | None = None
         self.time = False
         self.service: str | None = None
+        self.ship: str | None = None
+        self.ship_token: str | None = None
 
 
 _DEFAULTS = _Defaults()
@@ -471,12 +488,187 @@ def _human_line(e: _Event, time_on: bool) -> str:
 
 
 def _write(e: _Event) -> None:
-    # Both knobs resolve on every event, so a bad LOG_TIME screams under json too.
-    fmt, time_on = _format(), _time_on()
+    # Every knob resolves on every event, so a bad LOG_TIME or LOG_SHIP
+    # screams under any rendering.
+    fmt, time_on, target = _format(), _time_on(), _ship_target()
     text = _json_line(e) if fmt == "json" else _human_line(e, time_on)
+    # What ships is the stream's json line, whatever stderr renders.
+    line = text if fmt == "json" or target is None else _json_line(e)
     with _WRITE_LOCK:
         sys.stderr.write(text + "\n")
         sys.stderr.flush()
+        # Under the write lock, so a batch holds lines in stderr's order.
+        too_large = target is not None and not _ship(target, line)
+    if too_large:
+        _SHIP_LOG.warn_once(
+            "event too large to ship",
+            bytes=len(line.encode("utf-8")),
+            limit=_SHIP_MAX_BYTES,
+        )
+
+
+# ----- shipping -----
+
+# navigator.sendBeacon's ceiling, the contract's for every writer.
+_SHIP_MAX_BYTES = 64 * 1024
+_SHIP_MAX_EVENTS = 50
+_SHIP_AFTER_S = 2.0
+# A collector that hangs costs flush_log this much, then one warning.
+_SHIP_TIMEOUT_S = 10.0
+
+
+class _Batch:
+    def __init__(self, target: str) -> None:
+        self.target = target
+        self.lines: list[str] = []
+        self.size = -1  # UTF-8 bytes of the lines joined by "\n"
+        self.timer: threading.Timer | None = None
+
+
+class _Shipping:
+    """The batch filling up and the batches being POSTed. `cond` guards both
+    and is notified each time a POST finishes, for flush_log."""
+
+    def __init__(self) -> None:
+        self.cond = threading.Condition()
+        self.batch: _Batch | None = None
+        self.inflight = 0
+        self.hooked = False
+
+
+_SHIPPING = _Shipping()
+
+
+def set_log_ship(url: str) -> None:
+    """Where events are also POSTed, an http(s) URL; LOG_SHIP overrides it."""
+    _DEFAULTS.ship = _parse_ship(url, "set_log_ship")
+
+
+def set_log_ship_token(token: str) -> None:
+    """The bearer sent with each batch; LOG_SHIP_TOKEN overrides it."""
+    if not isinstance(token, str) or not token:
+        raise ValueError(f"set_log_ship_token: want a non-empty token, got {token!r}")
+    _DEFAULTS.ship_token = token
+
+
+def _parse_ship(value: str, source: str) -> str:
+    url = urllib.parse.urlsplit(value)
+    if url.scheme not in ("http", "https") or not url.netloc:
+        raise ValueError(f"{source}: unknown URL {value!r} (want an http(s) URL)")
+    return value
+
+
+def _ship_target() -> str | None:
+    value = os.environ.get("LOG_SHIP")
+    if value:
+        return _parse_ship(value, "LOG_SHIP")
+    return _DEFAULTS.ship
+
+
+def _ship_token() -> str | None:
+    return os.environ.get("LOG_SHIP_TOKEN") or _DEFAULTS.ship_token
+
+
+def _ship(target: str, line: str) -> bool:
+    """Add one json line to the waiting batch, first sending the batch it
+    would not fit in. False: the line alone is over the ceiling, not shipped."""
+    size = len(line.encode("utf-8"))
+    if size > _SHIP_MAX_BYTES:
+        return False
+    s = _SHIPPING
+    with s.cond:
+        if not s.hooked:
+            # Hooked on the first shipped event, so importing the logger has no effect.
+            s.hooked = True
+            atexit.register(flush_log)
+        b = s.batch
+        if b is not None and (
+            b.target != target or b.size + 1 + size > _SHIP_MAX_BYTES
+        ):
+            _send_locked()
+        if s.batch is None:
+            b = _Batch(target)
+            b.timer = threading.Timer(_SHIP_AFTER_S, _send_if, (b,))
+            # A waiting batch never holds the process: atexit sends it.
+            b.timer.daemon = True
+            b.timer.start()
+            s.batch = b
+        b = s.batch
+        b.lines.append(line)
+        b.size += 1 + size
+        if len(b.lines) >= _SHIP_MAX_EVENTS:
+            _send_locked()
+    return True
+
+
+def _send_if(b: _Batch) -> None:
+    """The timer's send: this batch only, since one sent earlier is gone."""
+    with _SHIPPING.cond:
+        if _SHIPPING.batch is b:
+            _send_locked()
+
+
+def _send() -> None:
+    with _SHIPPING.cond:
+        _send_locked()
+
+
+def _send_locked() -> None:
+    s = _SHIPPING
+    b = s.batch
+    if b is None:
+        return
+    s.batch = None
+    assert b.timer is not None
+    b.timer.cancel()
+    s.inflight += 1
+    threading.Thread(target=_post, args=(b,), daemon=True).start()
+
+
+def _post(b: _Batch) -> None:
+    """POST one batch. Any answer but 204 is a refused batch, warned about once."""
+    try:
+        headers = {"Content-Type": "text/plain;charset=utf-8"}
+        token = _ship_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        request = urllib.request.Request(
+            b.target,
+            data="\n".join(b.lines).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=_SHIP_TIMEOUT_S) as response:
+                status, answer = response.status, response.read(1000)
+        except urllib.error.HTTPError as e:
+            status, answer = e.code, e.read(1000)
+        except OSError as e:
+            _SHIP_LOG.warn_once("log batch not delivered", err=e)
+            return
+        if status != 204:
+            _SHIP_LOG.warn_once(
+                "log batch refused",
+                status=status,
+                answer=answer.decode("utf-8", "replace"),
+            )
+    finally:
+        with _SHIPPING.cond:
+            _SHIPPING.inflight -= 1
+            _SHIPPING.cond.notify_all()
+
+
+def flush_log() -> None:
+    """Send what waits to LOG_SHIP and return once no batch is in flight. Runs
+    at exit by itself (atexit); a process that leaves through os._exit, or a
+    fork that never returns, calls it first. A refused batch's warning is an
+    event too: it ships before this returns."""
+    s = _SHIPPING
+    with s.cond:
+        _send_locked()
+        while s.inflight > 0:
+            s.cond.wait()
+            _send_locked()
 
 
 # ----- spans -----
@@ -526,6 +718,9 @@ class Logger:
     set_log_format = staticmethod(set_log_format)
     set_log_time = staticmethod(set_log_time)
     set_log_service = staticmethod(set_log_service)
+    set_log_ship = staticmethod(set_log_ship)
+    set_log_ship_token = staticmethod(set_log_ship_token)
+    flush_log = staticmethod(flush_log)
 
     def scope(self, name: str) -> Logger:
         """A child whose events carry `name` after this logger's scope path."""
@@ -705,6 +900,13 @@ class Span(Logger):
         if self._ended:
             raise RuntimeError(f"span {self._name!r} ended twice")
         self._ended = True
+        self._finish(err)
+        if self._parent is None:
+            # Opened outside any span of this process (a root, or a request
+            # joined from its caller): its trace ends here and ships together.
+            _send()
+
+    def _finish(self, err: BaseException | None) -> None:
         dur_ms = round((time.perf_counter() - self._start) * 1000.0, 3)
         fields = {**self._fields, **self._added}
         if err is None:
@@ -776,3 +978,4 @@ class _Block:
 
 
 log = Logger()
+_SHIP_LOG = log.scope("ship")

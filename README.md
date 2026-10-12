@@ -132,8 +132,18 @@ The default is human when stderr is a TTY, json otherwise. Field values follow o
 | `LOG_FORMAT` | `log.set_log_format` | `human` `json` |
 | `LOG_TIME` | `log.set_log_time` | `1` `0`: a dim local `HH:MM:SS` before human lines |
 | `LOG_SERVICE` | `log.set_log_service` | the program's name, default the script's file name without extension |
+| `LOG_SHIP` | `log.set_log_ship` | an http(s) URL: every event that passes its threshold is also POSTed there (Shipping) |
+| `LOG_SHIP_TOKEN` | `log.set_log_ship_token` | a token, sent as `Authorization: Bearer` with each batch |
 
 A scoped event reads its level live from the most specific variable set: scope `["api", "auth"]` reads `API_AUTH_LOG_LEVEL`, then `API_LOG_LEVEL`, then `LOG_LEVEL`, then `set_log_level`, then `info`. Whether a span is shown is decided once, when it begins, by its start's level; its end follows, so a hidden span writes no end. A failure is never lost to that: a hidden span that fails writes one `fail` line (level error, its name as the message, its fields plus `err` and `dur_ms`) as a line of its nearest shown span, with no `phase`. A hidden span hands its lines, child spans and `traceparent()` to its nearest shown ancestor (its own id only when it has none), so a viewer never meets a parent that is not there.
+
+**Shipping.** With `LOG_SHIP` set, the logger also POSTs its events to that URL, so a script ships its stream with no code:
+
+```sh
+LOG_SHIP=https://events.untitled.garden/ingest LOG_SHIP_TOKEN=… uv run python job.py
+```
+
+What ships is the stream's json line, byte for byte, whatever stderr renders. A batch is lines joined by `\n`, `Content-Type: text/plain;charset=utf-8`, at most 64 KB and 50 events. It leaves 2s after its first event, at 50 events, when a span opened outside any span of this process ends (a root span, or a request joined from its caller: its whole trace leaves together), and when the process exits (`atexit`). `log.flush_log()` sends what waits and returns once nothing is in flight, for a process that leaves through `os._exit`. Shipping never blocks a write and never raises: a refused or lost batch is one `warn_once` under scope `ship` (no retry), an event over 64 KB stays on stderr and warns once. The wire and the collector's answers are the contract's, in [utils](https://github.com/adriangalilea/utils#shipping).
 
 The runnable proof of every rule above is `uv run python example_usage.py`.
 

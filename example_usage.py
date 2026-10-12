@@ -18,11 +18,14 @@ import os
 import re
 import subprocess
 import sys
+import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, redirect_stderr
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -687,6 +690,271 @@ def check_human() -> None:
     assert re.fullmatch(r"✓ build \d+ms files=12 target=web", end), end
 
 
+@dataclass
+class Batch:
+    auth: str | None
+    content_type: str | None
+    body: str
+
+
+class Collector:
+    """A LOG_SHIP collector on 127.0.0.1: records every batch, answers `answer`."""
+
+    def __init__(self) -> None:
+        self.batches: list[Batch] = []
+        self.answer = (204, b"")
+        lock = threading.Lock()
+        self.lock = lock
+        collector = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                with lock:
+                    collector.batches.append(
+                        Batch(
+                            self.headers.get("Authorization"),
+                            self.headers.get("Content-Type"),
+                            body.decode("utf-8"),
+                        )
+                    )
+                    status, answer = collector.answer
+                self.send_response(status)
+                self.end_headers()
+                self.wfile.write(answer)
+
+            def log_message(self, *_: object) -> None:
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/ingest"
+
+    def take(self) -> list[Batch]:
+        with self.lock:
+            taken, self.batches = self.batches, []
+        return taken
+
+    def bodies(self) -> list[str]:
+        return [b.body for b in self.take()]
+
+
+def check_ship() -> None:
+    """LOG_SHIP: a batch is the stderr lines byte for byte on the contract's
+    wire; each trigger sends (50 events, a top-level span's end, 2s,
+    flush_log, exit) and a nested span's end does not; 64 KB is the ceiling;
+    only what passes the threshold ships; a refused or lost batch is one
+    warning, never a raise; a bad configuration raises."""
+    c = Collector()
+    buf = io.StringIO()
+
+    def taken() -> str:
+        text = buf.getvalue()
+        buf.seek(0)
+        buf.truncate()
+        return text.removesuffix("\n")
+
+    def settle() -> None:
+        time.sleep(0.3)
+
+    with environ(LOG_FORMAT="json"), redirect_stderr(buf):
+        # Off by default: nothing ships.
+        log.info("not shipped")
+        log.flush_log()
+        taken()
+        assert c.take() == [], "no LOG_SHIP, no batch"
+
+        with environ(LOG_SHIP=c.url):
+            # The wire: stderr's bytes, one POST, text/plain, the bearer.
+            log.set_log_ship_token("tok-1")
+            log.info("ready", port=1)
+            log.warn("retrying", attempt=2, nested={"b": 1, "a": [True, None]})
+            log.flush_log()
+            [b] = c.take()
+            assert b.body == taken(), "a batch is the written lines joined by \\n"
+            assert b.content_type == "text/plain;charset=utf-8", b.content_type
+            assert b.auth == "Bearer tok-1", b.auth
+            # The environment wins over code, read live.
+            with environ(LOG_SHIP_TOKEN="tok-env"):
+                log.info("env token")
+                log.flush_log()
+            [b] = c.take()
+            assert b.auth == "Bearer tok-env", b.auth
+            taken()
+
+            # The threshold: what is not written is not shipped.
+            log.debug("hidden")
+            log.info("shown")
+            log.flush_log()
+            [body] = c.bodies()
+            assert body == taken() and json.loads(body)["msg"] == "shown"
+
+            # Human on stderr, json on the wire.
+            with environ(LOG_FORMAT="human"):
+                log.info("for a person", k="v")
+                log.flush_log()
+            [body] = c.bodies()
+            assert not taken().startswith("{"), "human on stderr"
+            assert json.loads(body)["fields"] == {"k": "v"}, "json shipped"
+
+            # 50 events send at once, without waiting for the timer.
+            for i in range(50):
+                log.info("tick", i=i)
+            settle()
+            [body] = c.bodies()
+            assert body.count("\n") == 49 and body == taken(), "50 events: one batch"
+
+            # A top-level span's end sends its trace; a nested one's does not.
+            log.info("before")
+            root = log.begin("request")
+            with root.span("db") as db:
+                db.info("query")
+            settle()
+            assert c.take() == [], "a nested span's end does not send"
+            root.end()
+            settle()
+            [body] = c.bodies()
+            assert body.count("\n") == 5 and body == taken(), (
+                "line, request start, db start, query, db end, request end"
+            )
+            # A request joined from its caller is top-level here: its end sends too.
+            with log.join(REMOTE).span("POST /vote") as s:
+                s.info("voted")
+            settle()
+            [body] = c.bodies()
+            assert body == taken(), "a joined top-level span's end sends"
+            # A hidden root span still sends what it holds.
+            with environ(QUIET_LOG_LEVEL="warn"):
+                with log.scope("quiet").span("hidden") as s:
+                    s.warn("kept")
+            settle()
+            [body] = c.bodies()
+            assert body.count("\n") == 0 and body == taken(), (
+                "a hidden root span's end sends its one shown line"
+            )
+
+            # 2s after the first event, with no other trigger.
+            log.info("alone")
+            time.sleep(1.0)
+            assert c.take() == [], "not before 2s"
+            time.sleep(1.5)
+            [body] = c.bodies()
+            assert body == taken(), "the timer sends the waiting batch"
+
+            # 64 KB per batch, never more. Batches in flight together may
+            # arrive in any order: each is a run of the written lines, and
+            # together they are all of them, once.
+            big = "x" * 20_000
+            for i in range(7):
+                log.info("chunk", big=big, i=i)
+            log.flush_log()
+            got, written = c.bodies(), taken()
+            assert len(got) == 3, f"7 × 20 KB: three batches, got {len(got)}"
+            for body in got:
+                assert len(body.encode()) <= 64 * 1024, len(body.encode())
+                assert body + "\n" in written + "\n", "a run of the written lines"
+            assert sum(len(body) + 1 for body in got) - 1 == len(written)
+            # One event over the ceiling stays on stderr and warns once.
+            log.info("huge", blob="y" * 70_000)
+            log.info("huge again", blob="y" * 70_000)
+            log.flush_log()
+            [body] = c.bodies()
+            warning = parse(body)
+            assert warning["msg"] == "event too large to ship", warning
+            assert warning["level"] == "warn" and warning["scope"] == ["ship"]
+            assert taken().count("\n") == 2, "both huge events and the warning written"
+
+            # A refused batch: one warning, shipped with the next batch.
+            c.answer = (400, b'{"accepted":0,"rejected":[{"line":1,"why":"x"}]}')
+            log.info("refused")
+            log.info("refused again")
+            log.flush_log()
+            c.answer = (204, b"")
+            refused, warned = c.take()
+            assert refused.body.count("\n") == 1
+            warning = parse(warned.body)
+            assert warning["msg"] == "log batch refused", warning
+            assert warning["fields"] == {
+                "answer": '{"accepted":0,"rejected":[{"line":1,"why":"x"}]}',
+                "status": 400,
+            }, warning
+            c.answer = (400, b"")
+            log.info("refused once more")
+            log.flush_log()
+            c.answer = (204, b"")
+            assert len(c.take()) == 1, "a refusal warns once"
+            taken()
+
+        # A lost batch: one warning with the error.
+        dead = ThreadingHTTPServer(("127.0.0.1", 0), BaseHTTPRequestHandler)
+        dead_url = f"http://127.0.0.1:{dead.server_address[1]}/ingest"
+        dead.server_close()
+        with environ(LOG_SHIP=dead_url):
+            log.info("into the void")
+            log.flush_log()
+        _, lost = [parse(line) for line in taken().splitlines()]
+        assert lost["msg"] == "log batch not delivered", lost
+        assert list(lost["fields"]) == ["err"], lost
+
+        # A confused configuration raises.
+        for bad in ("ftp://x/y", "not a url"):
+            try:
+                log.set_log_ship(bad)
+            except ValueError:
+                continue
+            raise AssertionError(f"set_log_ship({bad!r}) must raise")
+        try:
+            log.set_log_ship_token("")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an empty token must raise")
+        try:
+            with environ(LOG_SHIP="nope"):
+                log.info("x")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a bad LOG_SHIP raises on the next event")
+        taken()
+
+    # A process ending on its own ships what waits (atexit), and the 2s timer
+    # does not hold it. set_log_ship is the setter form of LOG_SHIP.
+    code = (
+        "from py_utils import log\n"
+        f"log.set_log_ship({c.url!r})\n"
+        "log.info('child starting', n=1)\n"
+        "with log.span('work') as s:\n"
+        "    s.info('inside')\n"
+        "log.warn('child done')\n"
+    )
+    env = {
+        **os.environ,
+        "LOG_FORMAT": "json",
+        "LOG_SERVICE": "child",
+        "LOG_SHIP_TOKEN": "tok-child",
+        "PYTHONPATH": str(SRC_PATH),
+    }
+    started = time.monotonic()
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    took = time.monotonic() - started
+    batches = c.take()
+    assert done.stderr.count("\n") == 5, done.stderr
+    assert len(batches) == 2, "the span's end sent one batch, atexit the other"
+    # Both can be in flight at once, so they may arrive in either order.
+    ordered = sorted(batches, key=lambda b: done.stderr.index(b.body + "\n"))
+    assert "\n".join(b.body for b in ordered) == done.stderr.removesuffix("\n")
+    assert all(b.auth == "Bearer tok-child" for b in batches)
+    assert took < 1.9, f"the 2s timer does not hold the process: {took:.2f}s"
+    c.server.shutdown()
+
+
 def demonstrate_human() -> None:
     """What a person at a terminal sees."""
     with environ(LOG_FORMAT="human"):
@@ -711,9 +979,13 @@ if __name__ == "__main__":
         "run without TRACEPARENT: these checks open root spans"
     )
     for key in list(os.environ):
-        if key in ("LOG_FORMAT", "LOG_TIME", "LOG_SERVICE") or key.endswith(
-            "LOG_LEVEL"
-        ):
+        if key in (
+            "LOG_FORMAT",
+            "LOG_TIME",
+            "LOG_SERVICE",
+            "LOG_SHIP",
+            "LOG_SHIP_TOKEN",
+        ) or key.endswith("LOG_LEVEL"):
             del os.environ[key]
 
     check_shape()
@@ -731,4 +1003,5 @@ if __name__ == "__main__":
     check_levels()
     check_warn_once()
     check_human()
+    check_ship()
     demonstrate_human()
