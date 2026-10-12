@@ -140,7 +140,7 @@ A scoped event reads its level live from the most specific variable set: scope `
 **Shipping.** With `LOG_SHIP` set, the logger also POSTs its events to that URL, so a script ships its stream with no code:
 
 ```sh
-LOG_SHIP=https://events.untitled.garden/ingest LOG_SHIP_TOKEN=… uv run python job.py
+LOG_SHIP=https://logs.example.com/ingest LOG_SHIP_TOKEN=… uv run python job.py
 ```
 
 What ships is the stream's json line, byte for byte, whatever stderr renders. A batch is lines joined by `\n`, `Content-Type: text/plain;charset=utf-8`, at most 64 KB and 50 events. It leaves 2s after its first event, at 50 events, when a span opened outside any span of this process ends (a root span, or a request joined from its caller: its whole trace leaves together), and when the process exits (`atexit`). `log.flush_log()` sends what waits and returns once nothing is in flight, for a process that leaves through `os._exit`. Shipping never blocks a write and never raises: a refused or lost batch is one `warn_once` under scope `ship` (no retry), an event over 64 KB stays on stderr and warns once. The wire and the collector's answers are the contract's, in [utils](https://github.com/adriangalilea/utils#shipping).
