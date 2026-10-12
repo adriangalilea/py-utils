@@ -628,7 +628,12 @@ def _send_locked() -> None:
 def _post(b: _Batch) -> None:
     """POST one batch. Any answer but 204 is a refused batch, warned about once."""
     try:
-        headers = {"Content-Type": "text/plain;charset=utf-8"}
+        headers = {
+            "Content-Type": "text/plain;charset=utf-8",
+            # Cloudflare refuses urllib's own "Python-urllib/3.x" (error 1010),
+            # and collectors sit behind it.
+            "User-Agent": "adrian-utils",
+        }
         token = _ship_token()
         if token:
             headers["Authorization"] = f"Bearer {token}"

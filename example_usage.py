@@ -694,6 +694,7 @@ def check_human() -> None:
 class Batch:
     auth: str | None
     content_type: str | None
+    user_agent: str | None
     body: str
 
 
@@ -715,6 +716,7 @@ class Collector:
                         Batch(
                             self.headers.get("Authorization"),
                             self.headers.get("Content-Type"),
+                            self.headers.get("User-Agent"),
                             body.decode("utf-8"),
                         )
                     )
@@ -773,6 +775,8 @@ def check_ship() -> None:
             [b] = c.take()
             assert b.body == taken(), "a batch is the written lines joined by \\n"
             assert b.content_type == "text/plain;charset=utf-8", b.content_type
+            # Not urllib's own, which Cloudflare refuses in front of a collector.
+            assert b.user_agent == "adrian-utils", b.user_agent
             assert b.auth == "Bearer tok-1", b.auth
             # The environment wins over code, read live.
             with environ(LOG_SHIP_TOKEN="tok-env"):
