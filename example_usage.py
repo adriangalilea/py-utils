@@ -414,6 +414,7 @@ def check_filtered_spans() -> None:
         with log.scope("db").span("vacuum") as v:
             orphan.append(v)
             handed.append(v.traceparent())
+            v.warn("vacuum slow", ms=4000)
 
     written = events(write, DB_LOG_LEVEL="warn", DB_CACHE_LOG_LEVEL="info")
     # Visibility is decided at begin and the end follows it: the hidden
@@ -425,8 +426,13 @@ def check_filtered_spans() -> None:
         ("hit", None),
         ("lookup", "end"),
         ("request", "end"),
+        ("vacuum slow", None),
     ], written
-    request, slow, lookup, hit, lookup_end, _ = written
+    request, slow, lookup, hit, lookup_end, _, vacuum_slow = written
+    # A line in a hidden span with no shown ancestor carries no ids at all,
+    # like a line outside any span: an id names a span a viewer can find.
+    assert "trace_id" not in vacuum_slow and "span_id" not in vacuum_slow
+    written = written[:-1]
     rid, trace = request["span_id"], request["trace_id"]
     # What the hidden span holds belongs to its nearest shown ancestor.
     assert slow["span_id"] == rid
