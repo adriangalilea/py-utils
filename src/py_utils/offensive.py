@@ -198,6 +198,7 @@ class SourcedError(Exception):
     ) -> None:
         self.source = source
         self.operation = operation
+        self.message = message
         self.status = status
         self.context: dict[str, Any] = context
         full = f"[{source}:{operation}] {message}"

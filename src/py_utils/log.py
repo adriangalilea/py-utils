@@ -35,14 +35,16 @@ Work that does not fit a block opens and ends the span by hand, once:
     s.end()        # or s.end(err)
 
 The with form is begin and end round a block. Only what is written through
-the span object belongs to it; there is no ambient context. A span hidden by
-its level hands its lines and children to its nearest shown ancestor, so a
-viewer never meets a parent that is absent.
+the span object belongs to it; there is no ambient context. Whether a span
+is shown is decided once, at begin, by its start's level; its end follows,
+failed or not. A hidden span hands its lines, children and traceparent to its
+nearest shown ancestor, so a viewer never meets a parent that is absent.
 
 A trace crosses processes explicitly: s.traceparent() is the W3C value to hand
 on (HTTP header, or TRACEPARENT of a spawned process); log.join(value) returns
-a logger whose spans are children of that remote span. A process started with
-TRACEPARENT set joins it for its root spans.
+a logger whose spans are children of that remote span, and warns once per
+distinct malformed value. A process started with TRACEPARENT set joins it for
+its root spans.
 
 Rendering. LOG_FORMAT=json writes one event per line in the contract's key
 order; human writes symbols, colour (NO_COLOR, FORCE_COLOR), dim key=value
@@ -54,8 +56,9 @@ else the script's file name without its extension.
 
 Each variable has a setter (set_log_format, set_log_time, set_log_level,
 set_log_service) that sets the program's default; the environment overrides
-it. An unknown value in either raises ValueError. Everything goes to stderr;
-stdout is for data.
+it. Values match without regard to case, an empty variable is unset, and an
+unknown value in either raises ValueError. Everything goes to stderr; stdout
+is for data.
 """
 
 from __future__ import annotations
@@ -124,20 +127,28 @@ class _Defaults:
 
 _DEFAULTS = _Defaults()
 _WRITE_LOCK = threading.Lock()
-_WARNED: set[tuple[tuple[str, ...], str]] = set()
+_ONCE: set[tuple[Any, ...]] = set()
+
+
+def _first_time(key: tuple[Any, ...]) -> bool:
+    """True the first time `key` is seen in this process, within _WARN_ONCE_CAP."""
+    if key in _ONCE:
+        return False
+    if len(_ONCE) >= _WARN_ONCE_CAP:
+        _ONCE.clear()
+    _ONCE.add(key)
+    return True
 
 
 def set_log_level(level: str) -> None:
     """The program's default threshold; LOG_LEVEL and {SCOPE}_LOG_LEVEL override it."""
     _parse_level(level, "set_log_level")
-    _DEFAULTS.level = level
+    _DEFAULTS.level = level.lower()
 
 
 def set_log_format(fmt: str) -> None:
     """The program's default rendering, "human" or "json"; LOG_FORMAT overrides it."""
-    if fmt not in _FORMATS:
-        raise ValueError(f"set_log_format: unknown format {fmt!r} (want human/json)")
-    _DEFAULTS.format = fmt
+    _DEFAULTS.format = _parse_format(fmt, "set_log_format")
 
 
 def set_log_time(enabled: bool) -> None:
@@ -155,13 +166,20 @@ def set_log_service(name: str) -> None:
 
 
 def _parse_level(value: str, source: str) -> int:
-    level = _LEVELS.get(value)
+    level = _LEVELS.get(value.lower())
     if level is None:
         raise ValueError(
             f"{source}: unknown log level {value!r} "
             "(want silent/error/warn/info/debug/trace)"
         )
     return level
+
+
+def _parse_format(value: str, source: str) -> str:
+    fmt = value.lower()
+    if fmt not in _FORMATS:
+        raise ValueError(f"{source}: unknown format {value!r} (want human/json)")
+    return fmt
 
 
 def _scope_var(path: tuple[str, ...]) -> str:
@@ -191,9 +209,7 @@ def _enabled(scope: tuple[str, ...], level: str) -> bool:
 def _format() -> str:
     value = os.environ.get("LOG_FORMAT")
     if value:
-        if value not in _FORMATS:
-            raise ValueError(f"LOG_FORMAT: unknown value {value!r} (want human/json)")
-        return value
+        return _parse_format(value, "LOG_FORMAT")
     if _DEFAULTS.format is not None:
         return _DEFAULTS.format
     return "human" if sys.stderr.isatty() else "json"
@@ -287,7 +303,10 @@ def _error(e: BaseException, seen: frozenset[int]) -> str:
     # import would be a cycle.
     from .offensive import SourcedError
 
-    pairs = [("type", _string(type(e).__name__)), ("message", _string(str(e)))]
+    # A SourcedError's str() prefixes [source:op status=...]; those are keys
+    # of their own here, so its message is the one it was given.
+    message = e.message if isinstance(e, SourcedError) else str(e)
+    pairs = [("type", _string(type(e).__name__)), ("message", _string(message))]
     if e.__traceback__ is not None:
         stack = "".join(traceback.format_exception(e, chain=False)).rstrip("\n")
         pairs.append(("stack", _string(stack)))
@@ -492,12 +511,14 @@ class Logger:
 
     def join(self, traceparent: str | None) -> Logger:
         """A logger whose spans are children of the remote span `traceparent`
-        names. None returns this logger; a malformed value is ignored with a warn."""
+        names. None returns this logger; a malformed value is ignored, warned
+        about once per distinct value, since it is input from outside."""
         if traceparent is None:
             return self
         remote = _parse_traceparent(traceparent)
         if remote is None:
-            self.warn("malformed traceparent ignored", traceparent=traceparent)
+            if _first_time(("traceparent", traceparent)):
+                self.warn("malformed traceparent ignored", traceparent=traceparent)
             return self
         return Logger(self._scope, None, remote)
 
@@ -565,13 +586,8 @@ class Logger:
 
     def warn_once(self, message: str, /, **fields: Any) -> None:
         """warn, once per message and scope for the process."""
-        key = (self._scope, message)
-        if key in _WARNED:
-            return
-        if len(_WARNED) >= _WARN_ONCE_CAP:
-            _WARNED.clear()
-        _WARNED.add(key)
-        self._line("warn", message, fields)
+        if _first_time(("warn", self._scope, message)):
+            self._line("warn", message, fields)
 
     def info(self, message: str, /, **fields: Any) -> None:
         self._line("info", message, fields)
@@ -600,10 +616,11 @@ class Span(Logger):
     begin() and span() make children, set() adds fields to its end event,
     traceparent() hands it on, end() closes it.
 
-    `_anchor` is the span id its lines and children carry: its own when its
-    start was shown, else its nearest shown ancestor's (or the remote
-    parent's, or none). `_depth` indents its own events, `_inner` what it
-    holds."""
+    Whether it is shown is decided once, at begin, by its start's level; its
+    end follows. `_anchor` is the span id its lines, children and
+    traceparent carry: its own when shown, else its nearest shown
+    ancestor's (or the remote parent's, or none). `_depth` indents its own
+    events, `_inner` what it holds."""
 
     def __init__(
         self,
@@ -648,8 +665,9 @@ class Span(Logger):
 
     def traceparent(self) -> str:
         """The W3C traceparent of this span, for an HTTP header or the
-        TRACEPARENT of a process it spawns."""
-        return f"00-{self._trace_id}-{self._span_id}-01"
+        TRACEPARENT of a process it spawns. A hidden span names its nearest
+        shown ancestor, its own id only when it has none."""
+        return f"00-{self._trace_id}-{self._anchor or self._span_id}-01"
 
     def end(self, err: BaseException | None = None) -> None:
         """Close the span: ok with no argument, failed with `err` in
@@ -657,12 +675,10 @@ class Span(Logger):
         if self._ended:
             raise RuntimeError(f"span {self._name!r} ended twice")
         self._ended = True
+        if not self._shown:
+            return
         dur_ms = round((time.perf_counter() - self._start) * 1000.0, 3)
         verb = "fail" if err is not None else "success"
-        # A span whose start was shown always closes, so no start is left
-        # reading as still running; a hidden one closes only at its level.
-        if not (self._shown or _enabled(self._scope, _VERBS[verb][0])):
-            return
         fields = {**self._fields, **self._added}
         if err is not None:
             fields["err"] = err

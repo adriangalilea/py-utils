@@ -103,7 +103,7 @@ s = log.begin("upload", size=n)
 s.end()                       # or s.end(err)
 ```
 
-**Traces cross processes** explicitly. `s.traceparent()` is the W3C value to send in an HTTP `traceparent` header or a child's `TRACEPARENT`; `log.join(value)` returns a logger whose spans are children of that remote span (`None` returns `log`, a malformed value is ignored with one warn). A process started with `TRACEPARENT` set joins it for its root spans with no code.
+**Traces cross processes** explicitly. `s.traceparent()` is the W3C value to send in an HTTP `traceparent` header or a child's `TRACEPARENT`; `log.join(value)` returns a logger whose spans are children of that remote span (`None` returns `log`, a malformed value is ignored with a warn once per distinct value). A process started with `TRACEPARENT` set joins it for its root spans with no code.
 
 **Output** goes to stderr. `LOG_FORMAT=json` writes one event per line:
 
@@ -124,7 +124,7 @@ s.end()                       # or s.end(err)
 
 The default is human when stderr is a TTY, json otherwise. Field values follow one set of rules: maps sorted at every depth, exceptions as `type`, `message`, `stack`, `cause` (and a `SourcedError`'s `source`, `operation`, `status`, `context`), `datetime` as a UTC millisecond string, `timedelta` as milliseconds, bytes (base64), `Decimal` and integers beyond 2^53 as strings, NaN and infinities as strings, dataclasses as objects, a value that contains itself as `"[circular]"`, anything else as `str()`.
 
-**Configuration.** Each variable has a setter that sets the program's default; the environment overrides it. An unknown value raises `ValueError`.
+**Configuration.** Each variable has a setter that sets the program's default; the environment overrides it. Values match without regard to case (`LOG_LEVEL=DEBUG` is `debug`), an empty variable is unset, and an unknown value raises `ValueError`.
 
 | variable | setter | values |
 |---|---|---|
@@ -133,7 +133,7 @@ The default is human when stderr is a TTY, json otherwise. Field values follow o
 | `LOG_TIME` | `log.set_log_time` | `1` `0`: a dim local `HH:MM:SS` before human lines |
 | `LOG_SERVICE` | `log.set_log_service` | the program's name, default the script's file name without extension |
 
-A scoped event reads its level live from the most specific variable set: scope `["api", "auth"]` reads `API_AUTH_LOG_LEVEL`, then `API_LOG_LEVEL`, then `LOG_LEVEL`, then `set_log_level`, then `info`. A span hidden by its level hands its lines and child spans to its nearest shown ancestor, so a viewer never meets a parent that is not there.
+A scoped event reads its level live from the most specific variable set: scope `["api", "auth"]` reads `API_AUTH_LOG_LEVEL`, then `API_LOG_LEVEL`, then `LOG_LEVEL`, then `set_log_level`, then `info`. Whether a span is shown is decided once, when it begins, by its start's level; its end follows, so a hidden span writes no end, failed or not. A hidden span hands its lines, child spans and `traceparent()` to its nearest shown ancestor (its own id only when it has none), so a viewer never meets a parent that is not there.
 
 The runnable proof of every rule above is `uv run python example_usage.py`.
 

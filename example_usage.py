@@ -255,6 +255,8 @@ def check_errors() -> None:
         "status",
         "context",
     ]
+    # The message it was given; str(e)'s [stripe:charge status=402] prefix is keys here.
+    assert s["message"] == "declined", s["message"]
     assert (s["source"], s["operation"], s["status"]) == ("stripe", "charge", 402)
     assert list(s["context"]) == ["alpha", "zeta"]
     assert s["cause"] == {"type": "ValueError", "message": "card"}
@@ -356,12 +358,16 @@ def check_failed_span() -> None:
 
 
 def check_filtered_spans() -> None:
+    handed: list[str] = []
+    orphan: list[Any] = []
+
     def write() -> None:
         with log.span("request") as req:
             # DB_LOG_LEVEL=warn hides this span's own events.
             with req.scope("db").span("query") as q:
                 q.info("filtered line")
                 q.warn("slow query", ms=900)
+                handed.append(q.traceparent())
                 # DB_CACHE_LOG_LEVEL=info opens this one again.
                 with q.scope("cache").span("lookup") as c:
                     c.info("hit")
@@ -370,26 +376,35 @@ def check_filtered_spans() -> None:
                     raise TimeoutError("lock")
             except TimeoutError:
                 pass
+        # A hidden root span has no shown ancestor to name.
+        with log.scope("db").span("vacuum") as v:
+            orphan.append(v)
+            handed.append(v.traceparent())
 
     written = events(write, DB_LOG_LEVEL="warn", DB_CACHE_LOG_LEVEL="info")
+    # Visibility is decided at begin and the end follows it: the hidden
+    # "migrate" writes no end even though it failed.
     assert [(e["msg"], e.get("phase")) for e in written] == [
         ("request", "start"),
         ("slow query", None),
         ("lookup", "start"),
         ("hit", None),
         ("lookup", "end"),
-        ("migrate", "end"),
         ("request", "end"),
     ], written
-    request, slow, lookup, hit, lookup_end, migrate, _ = written
-    rid = request["span_id"]
+    request, slow, lookup, hit, lookup_end, _ = written
+    rid, trace = request["span_id"], request["trace_id"]
     # What the hidden span holds belongs to its nearest shown ancestor.
     assert slow["span_id"] == rid
     assert lookup["parent_id"] == rid and lookup_end["parent_id"] == rid
     assert hit["span_id"] == lookup["span_id"]
-    # A hidden span's failure is at error, so it shows, naming a parent that is there.
-    assert migrate["status"] == "error" and migrate["parent_id"] == rid
     assert len({e["trace_id"] for e in written}) == 1
+    # Its traceparent names that ancestor too; a hidden root hands on its own id.
+    [vacuum] = orphan
+    assert handed == [
+        f"00-{trace}-{rid}-01",
+        f"00-{vacuum._trace_id}-{vacuum._span_id}-01",
+    ], handed
 
 
 def check_join() -> None:
@@ -407,11 +422,19 @@ def check_join() -> None:
     assert start["parent_id"] == "b7ad6b7169203331"
     assert inside["span_id"] == start["span_id"] == end["span_id"]
 
+    # Malformed input from outside: ignored, warned about once per distinct value.
     returned: list[Any] = []
-    [warned] = events(lambda: returned.append(log.join("00-nonsense")))
-    assert returned == [log]
-    assert (warned["level"], warned["msg"]) == ("warn", "malformed traceparent ignored")
-    assert warned["fields"] == {"traceparent": "00-nonsense"}
+
+    def malformed() -> None:
+        returned.append(log.join("00-nonsense"))
+        returned.append(log.join("00-nonsense"))
+        returned.append(log.join("01-other"))
+
+    first, second = events(malformed)
+    assert returned == [log, log, log]
+    assert (first["level"], first["msg"]) == ("warn", "malformed traceparent ignored")
+    assert first["fields"] == {"traceparent": "00-nonsense"}
+    assert second["fields"] == {"traceparent": "01-other"}
 
 
 def run_child(traceparent: str) -> list[Event]:
@@ -475,6 +498,12 @@ def check_levels() -> None:
     [_] = events(lambda: log.scope("my-api").debug("open"), MY_API_LOG_LEVEL="debug")
     assert events(lambda: log.error("quiet"), LOG_LEVEL="silent") == []
 
+    # Values match without regard to case, from the environment and from code.
+    assert shown(LOG_LEVEL="DEBUG")
+    [_] = events(lambda: log.info("upper"), LOG_FORMAT="JSON")
+    log.set_log_level("Info")
+    assert not shown()
+
     for setter, value in (
         (log.set_log_level, "verbose"),
         (log.set_log_format, "record"),
@@ -488,7 +517,7 @@ def check_levels() -> None:
         raise AssertionError(f"{setter.__name__}({value!r}) must raise")
 
     for var, value in (
-        ("LOG_LEVEL", "DEBUG"),
+        ("LOG_LEVEL", "loud"),
         ("LOG_FORMAT", "record"),
         ("LOG_TIME", "true"),
     ):
