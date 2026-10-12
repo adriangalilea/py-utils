@@ -59,6 +59,22 @@ dev = ["pytest>=8.0"]
 # files instead of a separate ``tests/`` tree. Pytest's default also
 # discovers ``test_*.py`` so either convention works, but the explicit
 # pattern keeps surprises away.
+# Every diagnostic goes through the logger, so a JSON stream never carries a
+# line that is no event. print (T201/T203) and raw stdio writes (TID251) are
+# refused everywhere except the allowlist below, one reason per entry.
+[tool.ruff.lint]
+extend-select = ["T20", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sys.stderr.write".msg = "log through py_utils.log; stderr belongs to the event stream"
+"sys.stdout.write".msg = "log through py_utils.log, or allowlist a data writer in pyproject.toml"
+
+[tool.ruff.lint.per-file-ignores]
+# The logger's sink: the one place events reach stderr.
+"src/py_utils/log.py" = ["TID251"]
+# verbalize's CLI prints its result to stdout: data for a pipe, not a log line.
+"src/py_utils/verbalize/cli.py" = ["T201"]
+
 [tool.pytest.ini_options]
 python_files = ["*_test.py"]
 testpaths = ["src/py_utils"]

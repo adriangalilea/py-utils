@@ -17,3 +17,5 @@ Proof, in this order, after any change to `log.py`:
 
 - `uv run python example_usage.py` asserts every rule (key order, sorting, field values, spans, failed and filtered spans, a hidden span's failure line, a stack printed once, join, TRACEPARENT, levels, setters) and prints a human rendering.
 - `LOCAL=~/Developer ~/Developer/utils/conformance/run.sh` must print `py PASS`.
+
+No raw writes: `uv run ruff check` refuses `print` (T20) and `sys.stdout.write`/`sys.stderr.write` (TID251) outside the allowlist in `pyproject.toml` (`[tool.ruff.lint.per-file-ignores]`, one reason per entry). A diagnostic is a `log.scope(...)` event; only data for a pipe goes to stdout.
