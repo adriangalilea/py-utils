@@ -15,5 +15,5 @@ No pytest. Correctness comes from offensive primitives (`require`/`invariant`/`e
 
 Proof, in this order, after any change to `log.py`:
 
-- `uv run python example_usage.py` asserts every rule (key order, sorting, field values, spans, failed and filtered spans, join, TRACEPARENT, levels, setters) and prints a human rendering.
+- `uv run python example_usage.py` asserts every rule (key order, sorting, field values, spans, failed and filtered spans, a hidden span's failure line, a stack printed once, join, TRACEPARENT, levels, setters) and prints a human rendering.
 - `LOCAL=~/Developer ~/Developer/utils/conformance/run.sh` must print `py PASS`.

@@ -418,17 +418,33 @@ def check_filtered_spans() -> None:
 
     written = events(write, DB_LOG_LEVEL="warn", DB_CACHE_LOG_LEVEL="info")
     # Visibility is decided at begin and the end follows it: the hidden
-    # "migrate" writes no end even though it failed.
+    # "migrate" writes no start and no end, but its failure is one fail line.
     assert [(e["msg"], e.get("phase")) for e in written] == [
         ("request", "start"),
         ("slow query", None),
         ("lookup", "start"),
         ("hit", None),
         ("lookup", "end"),
+        ("migrate", None),
         ("request", "end"),
         ("vacuum slow", None),
     ], written
-    request, slow, lookup, hit, lookup_end, _, vacuum_slow = written
+    request, slow, lookup, hit, lookup_end, migrate, _, vacuum_slow = written
+    # A failure is never lost: the hidden span's failure is a line of its
+    # nearest shown span, with the span's fields plus err and dur_ms.
+    assert (migrate["verb"], migrate["level"], migrate["scope"]) == (
+        "fail",
+        "error",
+        ["db"],
+    )
+    assert migrate["span_id"] == request["span_id"]
+    assert migrate["trace_id"] == request["trace_id"]
+    for absent in ("phase", "parent_id", "status", "dur_ms"):
+        assert absent not in migrate, (absent, migrate)
+    assert list(migrate["fields"]) == ["dur_ms", "err"]
+    assert migrate["fields"]["dur_ms"] >= 0
+    assert migrate["fields"]["err"]["message"] == "lock"
+    written = written[:5] + written[6:]
     # A line in a hidden span with no shown ancestor carries no ids at all,
     # like a line outside any span: an id names a span a viewer can find.
     assert "trace_id" not in vacuum_slow and "span_id" not in vacuum_slow
@@ -445,6 +461,86 @@ def check_filtered_spans() -> None:
         f"00-{trace}-{rid}-01",
         f"00-{vacuum._trace_id}-{vacuum._span_id}-01",
     ], handed
+
+
+def check_hidden_failure() -> None:
+    def write() -> None:
+        try:
+            with log.scope("db").span("reindex", table="users") as s:
+                s.set(rows=3)
+                raise TimeoutError("lock")
+        except TimeoutError:
+            pass
+
+    # A hidden root span has no shown span to name: its failure line has no ids.
+    [line] = events(write, DB_LOG_LEVEL="warn")
+    assert (line["verb"], line["level"], line["msg"]) == ("fail", "error", "reindex")
+    for absent in ("phase", "trace_id", "span_id", "parent_id", "status", "dur_ms"):
+        assert absent not in line, (absent, line)
+    assert list(line["fields"]) == ["dur_ms", "err", "rows", "table"]
+    # The line is a line: a scope silenced at error writes nothing.
+    assert events(write, DB_LOG_LEVEL="silent") == []
+
+
+def check_stack_once() -> None:
+    def write() -> None:
+        try:
+            with log.span("turn") as t:
+                with t.span("tool"):
+                    raise RuntimeError("tool broke")
+        except RuntimeError:
+            pass
+
+    # Human: the inner failure prints the stack, the outer one only the message.
+    rendered = lines(write, LOG_FORMAT="human", NO_COLOR="1", LOG_TIME="0")
+    tracebacks = [i for i, x in enumerate(rendered) if "Traceback" in x]
+    fails = [i for i, x in enumerate(rendered) if x.lstrip().startswith("⨯")]
+    assert len(fails) == 2 and len(tracebacks) == 1, rendered
+    assert fails[0] < tracebacks[0] < fails[1], rendered
+    assert rendered[fails[1]].startswith("⨯ turn "), rendered
+    assert "err=RuntimeError: tool broke" in rendered[fails[1]].replace('"', "")
+    assert fails[1] == len(rendered) - 1, "nothing follows the outer failure"
+
+    # JSON writes the error in full on both ends: they are two facts.
+    _, _, inner, outer = events(write)
+    assert inner["fields"]["err"] == outer["fields"]["err"]
+    assert "stack" in outer["fields"]["err"]
+
+    # A hidden span's failure line counts as the one that printed the stack.
+    def hidden_inner() -> None:
+        try:
+            with log.span("turn") as t:
+                with t.scope("db").span("query"):
+                    raise RuntimeError("db broke")
+        except RuntimeError:
+            pass
+
+    rendered = lines(
+        hidden_inner,
+        LOG_FORMAT="human",
+        NO_COLOR="1",
+        LOG_TIME="0",
+        DB_LOG_LEVEL="warn",
+    )
+    assert sum("Traceback" in x for x in rendered) == 1, rendered
+    assert rendered[-1].startswith("⨯ turn "), rendered
+
+    # A different error raised by the outer span prints its own stack.
+    def rewrapped() -> None:
+        try:
+            with log.span("turn") as t:
+                try:
+                    with t.span("tool"):
+                        raise RuntimeError("tool broke")
+                except RuntimeError as e:
+                    raise ValueError("turn broke") from e
+        except ValueError:
+            pass
+
+    rendered = lines(rewrapped, LOG_FORMAT="human", NO_COLOR="1", LOG_TIME="0")
+    outer = next(i for i, x in enumerate(rendered) if x.startswith("⨯ turn "))
+    assert rendered[-1].strip() == "ValueError: turn broke", rendered
+    assert any("Traceback" in x for x in rendered[outer:]), rendered
 
 
 def check_join() -> None:
@@ -628,6 +724,8 @@ if __name__ == "__main__":
     check_begin_end()
     check_failed_span()
     check_filtered_spans()
+    check_hidden_failure()
+    check_stack_once()
     check_join()
     check_traceparent_env()
     check_levels()

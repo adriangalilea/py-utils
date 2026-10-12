@@ -38,7 +38,10 @@ The with form is begin and end round a block. Only what is written through
 the span object belongs to it; there is no ambient context. Whether a span
 is shown is decided once, at begin, by its start's level; its end follows,
 failed or not. A hidden span hands its lines, children and traceparent to its
-nearest shown ancestor, so a viewer never meets a parent that is absent.
+nearest shown ancestor, so a viewer never meets a parent that is absent. A
+failure is never lost to that: a hidden span that fails writes one fail line
+(level error, msg its name, fields its own plus err and dur_ms) in that
+ancestor, with no phase.
 
 A trace crosses processes explicitly: s.traceparent() is the W3C value to hand
 on (HTTP header, or TRACEPARENT of a spawned process); log.join(value) returns
@@ -49,7 +52,9 @@ its root spans.
 Rendering. LOG_FORMAT=json writes one event per line in the contract's key
 order; human writes symbols, colour (NO_COLOR, FORCE_COLOR), dim key=value
 fields, a raised exception's traceback under its line and spans as
-"○ name" ... "✓ name 254ms" with their contents indented. The default is human
+"○ name" ... "✓ name 254ms" with their contents indented. A stack prints once:
+a span failing with the error a span inside it already failed with shows its
+message only (json writes err in full on both). The default is human
 when stderr is a TTY, json otherwise. LOG_TIME=1 puts a dim local HH:MM:SS
 before human lines; json always carries time. LOG_SERVICE names the program,
 else the script's file name without its extension.
@@ -392,6 +397,8 @@ class _Event(NamedTuple):
     parent_id: str | None = None
     status: str | None = None
     dur_ms: float | None = None
+    # Errors whose stack a span inside already printed: human shows their message only.
+    printed: tuple[BaseException, ...] = ()
 
 
 def _json_line(e: _Event) -> str:
@@ -451,7 +458,11 @@ def _human_line(e: _Event, time_on: bool) -> str:
         parts.append(dim(" ".join(f"{k}={_human_value(v)}" for k, v in ordered)))
     lines = [stamp + pad + " ".join(parts)]
     for _, v in ordered:
-        if isinstance(v, BaseException) and v.__traceback__ is not None:
+        if (
+            isinstance(v, BaseException)
+            and v.__traceback__ is not None
+            and not any(v is p for p in e.printed)
+        ):
             block = "".join(traceback.format_exception(v)).rstrip("\n")
             lines.extend(
                 dim((pad + "    " + line).rstrip()) for line in block.splitlines()
@@ -550,7 +561,7 @@ class Logger:
             trace_id = remote.trace_id if remote else secrets.token_hex(16)
             parent_id = remote.span_id if remote else None
             depth = 0
-        s = Span(name, self._scope, trace_id, parent_id, depth, fields)
+        s = Span(name, self._scope, parent, trace_id, parent_id, depth, fields)
         if s._shown:
             _write(s._event("wait", fields=fields, phase="start"))
         return s
@@ -632,18 +643,23 @@ class Span(Logger):
     end follows. `_anchor` is the span id its lines, children and
     traceparent carry: its own when shown, else its nearest shown
     ancestor's (or the remote parent's, or none). `_depth` indents its own
-    events, `_inner` what it holds."""
+    events, `_inner` what it holds. `_failed_inside` holds the errors a span
+    inside it wrote its failure with, so its own failure with the same error
+    does not print the stack a second time."""
 
     def __init__(
         self,
         name: str,
         scope: tuple[str, ...],
+        parent: Span | None,
         trace_id: str,
         parent_id: str | None,
         depth: int,
         fields: dict[str, Any],
     ) -> None:
         super().__init__(scope, self)
+        self._parent = parent
+        self._failed_inside: list[BaseException] = []
         self._name = name
         self._trace_id = trace_id
         self._span_id = secrets.token_hex(8)
@@ -683,21 +699,60 @@ class Span(Logger):
 
     def end(self, err: BaseException | None = None) -> None:
         """Close the span: ok with no argument, failed with `err` in
-        fields.err. A span ends once; a second end() raises."""
+        fields.err. A span ends once; a second end() raises. A hidden span
+        that fails writes one fail line in its nearest shown span, so a
+        failure is never lost to the level that hid its span."""
         if self._ended:
             raise RuntimeError(f"span {self._name!r} ended twice")
         self._ended = True
-        if not self._shown:
-            return
         dur_ms = round((time.perf_counter() - self._start) * 1000.0, 3)
-        verb = "fail" if err is not None else "success"
         fields = {**self._fields, **self._added}
-        if err is not None:
-            fields["err"] = err
-        status = "error" if err is not None else "ok"
-        _write(
-            self._event(verb, fields=fields, phase="end", status=status, dur_ms=dur_ms)
-        )
+        if err is None:
+            if self._shown:
+                _write(
+                    self._event(
+                        "success",
+                        fields=fields,
+                        phase="end",
+                        status="ok",
+                        dur_ms=dur_ms,
+                    )
+                )
+            return
+        printed = (err,) if any(err is e for e in self._failed_inside) else ()
+        written = self._shown or _enabled(self._scope, "error")
+        if self._shown:
+            _write(
+                self._event(
+                    "fail",
+                    fields={**fields, "err": err},
+                    phase="end",
+                    status="error",
+                    dur_ms=dur_ms,
+                    printed=printed,
+                )
+            )
+        elif written:
+            anchored = self._anchor is not None
+            _write(
+                _Event(
+                    time=datetime.now(timezone.utc),
+                    verb="fail",
+                    msg=self._name,
+                    scope=self._scope,
+                    fields={**fields, "err": err, "dur_ms": dur_ms},
+                    depth=self._depth,
+                    trace_id=self._trace_id if anchored else None,
+                    span_id=self._anchor,
+                    printed=printed,
+                )
+            )
+        parent = self._parent
+        if parent is not None and (written or printed):
+            # Bounded like warn_once: past the cap a stack prints twice, never lost.
+            if len(parent._failed_inside) >= _WARN_ONCE_CAP:
+                parent._failed_inside.clear()
+            parent._failed_inside.append(err)
 
 
 class _Block:

@@ -111,7 +111,7 @@ s.end()                       # or s.end(err)
 {"time":"2026-10-12T12:20:39.123Z","level":"warn","verb":"warn","msg":"retrying","service":"checkout","scope":["payments"],"trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7","fields":{"attempt":2}}
 ```
 
-`LOG_FORMAT=human` writes symbols, colour (`NO_COLOR`, `FORCE_COLOR`), dim `key=value` fields, a raised exception's traceback under its line, and spans with what they hold indented:
+`LOG_FORMAT=human` writes symbols, colour (`NO_COLOR`, `FORCE_COLOR`), dim `key=value` fields, a raised exception's traceback under its line (once: a span that fails with the error a span inside it already failed with shows the message only), and spans with what they hold indented:
 
 ```
 ○ release version=0.7.0
@@ -133,7 +133,7 @@ The default is human when stderr is a TTY, json otherwise. Field values follow o
 | `LOG_TIME` | `log.set_log_time` | `1` `0`: a dim local `HH:MM:SS` before human lines |
 | `LOG_SERVICE` | `log.set_log_service` | the program's name, default the script's file name without extension |
 
-A scoped event reads its level live from the most specific variable set: scope `["api", "auth"]` reads `API_AUTH_LOG_LEVEL`, then `API_LOG_LEVEL`, then `LOG_LEVEL`, then `set_log_level`, then `info`. Whether a span is shown is decided once, when it begins, by its start's level; its end follows, so a hidden span writes no end, failed or not. A hidden span hands its lines, child spans and `traceparent()` to its nearest shown ancestor (its own id only when it has none), so a viewer never meets a parent that is not there.
+A scoped event reads its level live from the most specific variable set: scope `["api", "auth"]` reads `API_AUTH_LOG_LEVEL`, then `API_LOG_LEVEL`, then `LOG_LEVEL`, then `set_log_level`, then `info`. Whether a span is shown is decided once, when it begins, by its start's level; its end follows, so a hidden span writes no end. A failure is never lost to that: a hidden span that fails writes one `fail` line (level error, its name as the message, its fields plus `err` and `dur_ms`) as a line of its nearest shown span, with no `phase`. A hidden span hands its lines, child spans and `traceparent()` to its nearest shown ancestor (its own id only when it has none), so a viewer never meets a parent that is not there.
 
 The runnable proof of every rule above is `uv run python example_usage.py`.
 
