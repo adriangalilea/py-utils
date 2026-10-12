@@ -963,7 +963,7 @@ def demonstrate_human() -> None:
     """What a person at a terminal sees."""
     with environ(LOG_FORMAT="human"):
         log.info("human rendering follows")
-        with log.span("release", version="0.8.0") as s:
+        with log.span("release", version="0.8.1") as s:
             s.step("building wheel")
             with s.span("checks") as c:
                 c.info("ruff", result="clean")
