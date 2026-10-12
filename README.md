@@ -304,9 +304,8 @@ kev.keys("API_*")                       # Find all API_ keys
 kev.has("API_KEY")                      # Check if configured
 kev.clear("TEMP_*")                     # Clear from memory
 
-# Debug mode — shows the full lookup chain
-kev.debug = True
-kev.get("DATABASE_URL")                 # Prints each source checked
+# Lookup trace: KEV_LOG_LEVEL=debug logs each source checked (never the value)
+kev.get("DATABASE_URL")
 ```
 
 ### XDG

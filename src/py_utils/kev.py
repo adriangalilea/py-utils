@@ -24,13 +24,19 @@ Redis-style namespacing (when you need control):
 Source tracking:
     value, source = kev.get_with_source("API_KEY")
     kev.source_of("API_KEY")               # ".env" or "os" or "default"
-    kev.debug = True                       # Shows lookup chain
+
+Lookup trace: KEV_LOG_LEVEL=debug writes one debug event per source checked
+(key, source, found; never the value).
 """
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+
+from .log import log
+
+_log = log.scope("kev")
 
 
 class _SourceOps:
@@ -58,7 +64,6 @@ class Kev:
         self._memory: dict[str, tuple[str, str]] = {}  # key -> (value, source)
         self._sources: list[str] = ["os", ".env"]
         self.source = _SourceOps(self)
-        self.debug = False
 
     def _parse_key(self, key: str) -> tuple[str, str]:
         assert not key.startswith(":"), f"invalid key format - starts with colon: {key}"
@@ -99,57 +104,39 @@ class Kev:
         return ""
 
     def get(self, key: str, default: str = "") -> str:
+        # Values stay out of the trace: they are secrets as often as not.
         namespace, real_key = self._parse_key(key)
-        _debug = self.debug and key != "LOG_LEVEL"
-
-        if _debug:
-            print(f"KEV: Looking for {key}")
 
         if namespace:
             val = self._get_from_namespace(namespace, real_key)
-            if val:
-                if _debug:
-                    print(f"  + {namespace}: found {val}")
-                return val
-            if _debug:
-                print(f"  - {namespace}: not found")
-            return default
+            _log.debug("lookup", key=key, source=namespace, found=bool(val))
+            return val if val else default
 
-        # Check memory
         if real_key in self._memory:
-            val, src = self._memory[real_key]
-            if _debug:
-                print(f"  + memory: {val} (from {src})")
-            return val
+            _log.debug(
+                "lookup", key=key, source="memory", origin=self._memory[real_key][1]
+            )
+            return self._memory[real_key][0]
 
-        if _debug:
-            print("  - memory: not found")
-
-        # Search sources
         for source in self._sources:
             val = self._get_from_namespace(source, real_key)
             if val:
-                if _debug:
-                    print(f"  + {source}: found {val} (caching)")
                 abs_source = (
                     str(Path(source).resolve())
                     if source not in ("os", "default", "set")
                     else source
                 )
+                _log.debug("lookup", key=key, source=abs_source, found=True)
                 self._memory[real_key] = (val, abs_source)
                 return val
-            if _debug:
-                print(f"  - {source}: not found")
+            _log.debug("lookup", key=key, source=source, found=False)
 
-        # Cache default
         if default:
-            if _debug:
-                print(f"  -> using default: {default} (caching)")
+            _log.debug("lookup", key=key, source="default", found=True)
             self._memory[real_key] = (default, "default")
             return default
 
-        if _debug:
-            print("  -> not found, returning empty")
+        _log.debug("lookup", key=key, found=False)
         return ""
 
     def must_get(self, key: str) -> str:
