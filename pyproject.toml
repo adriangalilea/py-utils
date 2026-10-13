@@ -7,9 +7,7 @@ requires-python = ">=3.12"
 authors = [
     { name = "Adrian Galilea", email = "adriangalilea@gmail.com" },
 ]
-dependencies = [
-    "ruff>=0.13.2",
-]
+dependencies = []
 
 [project.optional-dependencies]
 # `py_utils.verbalize` — TTS text normalization (Text-to-Speech frontend).
@@ -53,7 +51,7 @@ packages = ["src/py_utils"]
 allow-direct-references = true
 
 [dependency-groups]
-dev = ["pytest>=8.0"]
+dev = ["pytest>=8.0", "ruff>=0.13.2"]
 
 # Test discovery: Go-style ``<module>_test.py`` co-located with source
 # files instead of a separate ``tests/`` tree. Pytest's default also
