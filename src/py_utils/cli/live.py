@@ -20,7 +20,8 @@ Non-TTY (pipe / CI / log file): nothing animates, nothing repaints.
 `done(final)` prints the final frame once; the opt-in `heartbeat` (seconds)
 prints plain snapshots for long CI silences. Same calling code either way.
 
-The cursor is hidden while painting and restored on done/clear and at exit.
+The cursor is hidden while painting and restored on done/clear, at exit, and
+on SIGTERM (then handed on to the program's handler or the default).
 Exactly one region can be active: two pinned regions can't share the bottom of
 one screen. Compose everything into a single `render()`.
 
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import signal
 import sys
 import threading
 import time
@@ -124,6 +126,7 @@ class Live:
             _active = self
         self._route()
         atexit.register(self._restore_cursor)
+        self._guard_sigterm()
         self._stream.write(HIDE_CURSOR)
         self._paint()
         self._thread = self._loop(1 / fps, self._paint)
@@ -246,6 +249,38 @@ class Live:
         self._stream.write(SHOW_CURSOR)
         self._stream.flush()
 
+    def _guard_sigterm(self) -> None:
+        """SIGTERM's default kills the process without running atexit, which
+        would leave the cursor hidden. Restore it, then hand the signal on:
+        to the program's own handler if it has one (graceful shutdown stays
+        in charge), else default semantics, re-raised so the process still
+        dies by SIGTERM. Ctrl-C needs nothing: KeyboardInterrupt unwinds
+        through `with live()` and atexit. Handlers install only from the
+        main thread, so a region started elsewhere relies on atexit alone."""
+        self._prior_sigterm: signal.Handlers | Callable | None = None
+        if threading.current_thread() is not threading.main_thread():
+            return
+        self._prior_sigterm = signal.getsignal(signal.SIGTERM)
+        signal.signal(signal.SIGTERM, self._on_sigterm)
+
+    def _on_sigterm(self, signum: int, frame) -> None:
+        self._restore_cursor()
+        prior = self._prior_sigterm
+        if callable(prior):
+            prior(signum, frame)
+            return
+        if prior == signal.SIG_IGN:
+            return
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    def _release_sigterm(self) -> None:
+        if self._prior_sigterm is None:
+            return
+        if signal.getsignal(signal.SIGTERM) == self._on_sigterm:
+            signal.signal(signal.SIGTERM, self._prior_sigterm)
+        self._prior_sigterm = None
+
     def _stop(self) -> None:
         global _active
         with _LOCK:
@@ -262,6 +297,8 @@ class Live:
                 invariant(_active is self, "a different live region was active")
                 _active = None
                 atexit.unregister(self._restore_cursor)
+        if self._tty and threading.current_thread() is threading.main_thread():
+            self._release_sigterm()
         thread = self._thread
         if thread and thread is not threading.current_thread():
             thread.join()
