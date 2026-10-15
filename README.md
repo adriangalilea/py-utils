@@ -364,15 +364,11 @@ Saves state to: `$XDG_STATE_HOME/unseen/{name}.json`
 
 ### Colors
 
-Colors auto-disable when stdout is not a TTY. Override at runtime:
+`format` and `currency` return plain strings, so a value reads the same in a terminal, a file or a JSON field. Color is the caller's: `cli.ui.ok(percentage(x))`, gated on TTY / `NO_COLOR` / `FORCE_COLOR` by `cli`.
 
-```python
-from py_utils import set_color_enabled
+#### Migrating from 0.8
 
-set_color_enabled(True)   # force on
-set_color_enabled(False)  # force off
-set_color_enabled(None)   # auto
-```
+`set_color_enabled`, `color_enabled` and `color_by_sign` are gone. They emitted rich markup (`[green]+5.0%[/]`), not escapes, so a terminal printed the brackets. Wrap the value with `cli.ui` instead.
 
 ### ANSI primitives (`ansi`)
 

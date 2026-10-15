@@ -4,8 +4,8 @@ py_utils: Generic Python utilities (Python 3.12+)
 - KEV: Redis-style KV store for environment variables
 - XDG: Base Directory paths with spec-compliant fallbacks
 - Logger: one event stream of lines and spans, JSON or human, shared with go-utils and ts-utils
-- Format: Number/percentage formatting helpers
-- Currency: Formatting utilities with optimal decimals
+- Format: number/percentage formatting, plain strings
+- Currency: formatting with optimal decimals, plain strings
 - ansi / cli (subpackages): escape vocabulary; tables, palette, live regions
 """
 
@@ -28,8 +28,6 @@ from .format import (
     bps,
     sign,
     apply_sign,
-    set_color_enabled,
-    color_enabled,
 )
 
 from .kev import kev, Kev
@@ -97,8 +95,6 @@ __all__ = [
     "bps",
     "sign",
     "apply_sign",
-    "set_color_enabled",
-    "color_enabled",
     # currency
     "get_symbol",
     "get_optimal_decimals",

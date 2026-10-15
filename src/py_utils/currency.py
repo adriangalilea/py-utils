@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from math import fabs
 
-from .format import number_plain, color_by_sign, apply_sign
+from .format import apply_sign, number_plain
 
 
 SYMBOLS: dict[str, str] = {
@@ -195,22 +195,19 @@ def get_optimal_decimals(value: float, code: str) -> int:
 def usd(value: float, *, signed: bool = True) -> str:
     decimals = get_optimal_decimals(value, "USD")
     body = f"${number_plain(abs(value), decimals)}"
-    token = apply_sign(value, body, signed=signed)
-    return color_by_sign(value, token)
+    return apply_sign(value, body, signed=signed)
 
 
 def btc(value: float, *, signed: bool = True) -> str:
     decimals = get_optimal_decimals(value, "BTC")
     body = f"{number_plain(abs(value), decimals)} ₿"
-    token = apply_sign(value, body, signed=signed)
-    return color_by_sign(value, token)
+    return apply_sign(value, body, signed=signed)
 
 
 def eth(value: float, *, signed: bool = True) -> str:
     decimals = get_optimal_decimals(value, "ETH")
     body = f"{number_plain(abs(value), decimals)} Ξ"
-    token = apply_sign(value, body, signed=signed)
-    return color_by_sign(value, token)
+    return apply_sign(value, body, signed=signed)
 
 
 def auto(value: float, code: str, *, signed: bool = True) -> str:
@@ -219,14 +216,12 @@ def auto(value: float, code: str, *, signed: bool = True) -> str:
 
     if is_fiat(code) or is_stablecoin(code):
         body = f"{symbol}{number_plain(abs(value), decimals)}"
-        token = apply_sign(value, body, signed=signed)
-        return color_by_sign(value, token)
+        return apply_sign(value, body, signed=signed)
 
     base_body = (
         f"{number_plain(abs(value), decimals)} {symbol if symbol != code else code}"
     )
-    token = apply_sign(value, base_body, signed=signed)
-    return color_by_sign(value, token)
+    return apply_sign(value, base_body, signed=signed)
 
 
 def bps_to_percent(bps: int) -> float:
