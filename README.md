@@ -374,6 +374,51 @@ set_color_enabled(False)  # force off
 set_color_enabled(None)   # auto
 ```
 
+### ANSI primitives (`ansi`)
+
+Raw escape codes, ALWAYS ON: the vocabulary under the TTY-aware `cli` palette, for output whose consumer renders ANSI regardless of what stdout is (Claude Code status lines, tmux status strings). 256-color first; `rgb` for known-truecolor consumers. Out-of-range values raise `PreconditionError`. Same names as ts-utils `ansi`.
+
+```python
+from py_utils.ansi import fg, bg, rgb, BOLD, RESET, strip_ansi
+
+f"{BOLD}{fg(171)}Fable 5{RESET}"   # bold bright violet
+strip_ansi(styled)                 # the string minus its escapes
+```
+
+### CLI presentation (`cli`)
+
+Aligned tables, key/value blocks, trees and a semantic palette, the port of ts-utils `cli`. Colors require stdout and stderr to be TTYs (`NO_COLOR` / `FORCE_COLOR` override), so the same `table()` is colored in a terminal and plain aligned text in a pipe. Alignment uses visible width in terminal cells: escapes take none, a ZWJ emoji or flag is one grapheme, CJK takes two cells.
+
+```python
+from py_utils.cli import table, kv, tree, indent, clip, ui
+
+table(
+    [["Ada", ui.accent("ada@x.com"), ui.ref("42")],
+     ["Bo",  ui.accent("bo@y.com"),  ui.ref("7")]],
+    head=["name", "email", "msgs"], align=["l", "l", "r"],
+)
+kv([("name", "Ada"), ("email", "ada@x.com")], indent=2)
+clip("a very long value", 10)   # "a very lo…", styles survive
+```
+
+### Live output (`cli`): pinned region, spinner, progress
+
+A region at the bottom of the terminal repaints `render()` (a string, so `table()` and the widgets `spin()`, `bar()`, `elapsed()` compose inside it). While it is active, `sys.stdout` and `sys.stderr` print each complete line above it, so the logger and any `print` never tear it. Workers in threads mutate the state and log freely. Non-TTY: nothing animates, `done()` prints the final frame once.
+
+```python
+from py_utils.cli import live, spinner, spin, bar, table, ui
+
+with spinner("connecting 0/4") as set_label:   # ✓ connecting 4/4 1.2s
+    ...
+    set_label("connecting 4/4")
+
+with live(lambda: table([[ui.ok("✓") if d == t else spin(), name, bar(d, t, 18)]
+                         for name, (d, t) in jobs.items()])):
+    run_workers()                               # final frame persists
+```
+
+One region at a time (`PreconditionError` otherwise); a `spinner()` under an active region prints its final line above it. A render that raises stops the repainting and `done()` raises it. Run `uv run python example_cli.py` (and `| cat` for the pipe rendering).
+
 ## Run the demos
 
 ```bash

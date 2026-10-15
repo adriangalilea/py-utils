@@ -6,6 +6,7 @@ py_utils: Generic Python utilities (Python 3.12+)
 - Logger: one event stream of lines and spans, JSON or human, shared with go-utils and ts-utils
 - Format: Number/percentage formatting helpers
 - Currency: Formatting utilities with optimal decimals
+- ansi / cli (subpackages): escape vocabulary; tables, palette, live regions
 """
 
 from .log import (

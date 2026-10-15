@@ -1,7 +1,7 @@
 [project]
 name = "adrian-utils"
 version = "0.8.1"
-description = "Generic Python utilities — KEV environment manager, XDG directories, persistent dedup filter, structured logger (lines and spans as one JSON or human event stream, shared with go-utils and ts-utils), number/percentage/currency formatting, TTS text normalization (say). Python 3.12+."
+description = "Generic Python utilities — KEV environment manager, XDG directories, persistent dedup filter, structured logger (lines and spans as one JSON or human event stream, shared with go-utils and ts-utils), number/percentage/currency formatting, terminal presentation (ANSI-aware tables, semantic palette, live regions with spinners and progress, ported from ts-utils), TTS text normalization (say). Python 3.12+."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
@@ -72,6 +72,11 @@ extend-select = ["T20", "TID251"]
 "src/py_utils/log.py" = ["TID251"]
 # verbalize's CLI prints its result to stdout: data for a pipe, not a log line.
 "src/py_utils/verbalize/cli.py" = ["T201"]
+# The live region owns the bottom of the terminal: it paints frames and, under
+# another region, a spinner's final line. Presentation, not diagnostics.
+"src/py_utils/cli/live.py" = ["TID251"]
+# The cli demo prints what it renders: that output is the demonstration.
+"example_cli.py" = ["T201"]
 
 [tool.pytest.ini_options]
 python_files = ["*_test.py"]
