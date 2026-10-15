@@ -36,8 +36,11 @@ Exception hierarchy
 through unwrapped — contract failures are bugs in us, not failures of the
 external source, and must not be mislabeled.
 
-Every failure logs structurally via py_utils.log before raising, so forensics
-survive even if the exception is swallowed upstream.
+A failure raises and logs nothing: the exception is the scream, and the catch
+site decides whether it is an event (`log.error(op, err=e)` writes the type,
+message, context and cause in full). Logging here too would report a handled
+condition as an error and every unhandled one twice. Same as go-utils and
+ts-utils.
 
 Decision table
     Script or CLI                               → assert x, f"..."
@@ -56,8 +59,6 @@ from __future__ import annotations
 
 from functools import wraps
 from typing import Any, Callable, TypeVar, cast
-
-from .log import log
 
 T = TypeVar("T")
 F = TypeVar("F", bound=Callable[..., Any])
@@ -91,7 +92,6 @@ class PostconditionError(ContractError):
 
 
 def _fail(exc_cls: type[ContractError], message: str, context: dict[str, Any]) -> None:
-    log.error(message, **context)
     raise exc_cls(message, context)
 
 
@@ -251,15 +251,13 @@ def boundary(source: str, operation: str | None = None) -> Callable[[F], F]:
                 status = getattr(e, "status_code", None) or getattr(
                     e, "http_status", None
                 )
-                wrapped = SourcedError(
+                raise SourcedError(
                     source=source,
                     operation=op,
                     message=str(e) or type(e).__name__,
                     status=status,
                     cause=e,
-                )
-                log.error("external call failed", err=wrapped)
-                raise wrapped from e
+                ) from e
 
         return cast(F, wrapper)
 
