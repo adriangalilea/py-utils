@@ -5,9 +5,9 @@ Python 3.12+. `uv` for everything. `ruff` for lint/format.
 - `uv run ruff check src`
 - `uv run ruff format src`
 - `uv add <pkg>` — add deps
-- Runnable examples are the integration tests: `uv run python example_*.py`
+- Runnable examples are the integration tests: `uv run python example_*.py` (`example_usage.py` the logger, `example_offensive.py` the typed errors, `example_cli.py` terminal output; pipe `example_cli.py` through `| cat` for the non-TTY rendering)
 
-No pytest. Correctness comes from offensive primitives (`require`/`invariant`/`ensure`/`must`), the logger tracing every operation, and typed errors with context (`SourcedError`). See `src/py_utils/offensive.py` and `src/py_utils/log.py` for design rationale at the top of each file.
+No test suite. Correctness comes from offensive primitives (`require`/`invariant`/`ensure`/`must`), the logger tracing every operation, typed errors with context (`SourcedError`), and the examples asserting what they show. See `src/py_utils/offensive.py` and `src/py_utils/log.py` for design rationale at the top of each file. One exception, co-located: `verbalize`'s `*_test.py` files are input→output tables (`uv run pytest`), because for text normalization the examples are the spec.
 
 ## Logger
 
