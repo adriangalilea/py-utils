@@ -3,9 +3,8 @@ Shared text primitives for terminal presentation: ANSI-aware measurement,
 clipping, padding, and the semantic `ui` palette. Both the static layer
 (`cli` table/kv/tree) and the live layer (`cli.live`) build on these.
 
-Same names and behaviour as ts-utils `cli/text`, with one difference: width
-counts terminal cells, so East Asian wide characters and wide emoji take two
-(ts-utils counts them as one and lists that as a TODO).
+Same names and behaviour as ts-utils `cli/text`: width counts terminal cells,
+so East Asian wide characters and wide emoji take two.
 """
 
 import os
@@ -14,19 +13,16 @@ import unicodedata
 from collections.abc import Callable, Iterator
 from types import SimpleNamespace
 
-from ..ansi import ANSI_RE, BOLD, DIM, RESET, fg
+from ..ansi import ANSI_RE, BOLD, DIM, RESET, color_asked, fg
 
 
 def _color_enabled() -> bool:
-    # One whether-to-color decision for both cli layers. cli writes to both
-    # streams (static output to stdout, live regions to stderr), so color
-    # requires BOTH to be TTYs: any redirection means some cli string may land
-    # in a file, and a file never gets escapes. NO_COLOR / FORCE_COLOR override.
-    if os.getenv("FORCE_COLOR"):
-        return True
-    if os.getenv("NO_COLOR") or os.getenv("TERM") == "dumb":
-        return False
-    return sys.stdout.isatty() and sys.stderr.isatty()
+    # The one rule (ansi.color_asked, the logger's too). cli writes to both
+    # streams (static output to stdout, live regions to stderr), so when the
+    # environment leaves it to the TTY, color requires BOTH to be TTYs: any
+    # redirection means some cli string may land in a file.
+    asked = color_asked(os.environ)
+    return sys.stdout.isatty() and sys.stderr.isatty() if asked is None else asked
 
 
 COLOR = _color_enabled()

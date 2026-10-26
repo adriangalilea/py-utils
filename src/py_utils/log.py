@@ -100,6 +100,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from .ansi import color_asked
+
 _LEVELS = {"silent": 0, "error": 1, "warn": 2, "info": 3, "debug": 4, "trace": 5}
 _FORMATS = ("human", "json")
 
@@ -263,11 +265,9 @@ def _service() -> str:
 
 
 def _color() -> bool:
-    if os.environ.get("NO_COLOR"):
-        return False
-    if os.environ.get("FORCE_COLOR"):
-        return True
-    return sys.stderr.isatty()
+    # The one rule (ansi.color_asked); the logger writes stderr, so stderr's TTY.
+    asked = color_asked(os.environ)
+    return sys.stderr.isatty() if asked is None else asked
 
 
 # ----- field values -----

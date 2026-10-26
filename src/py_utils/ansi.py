@@ -16,8 +16,26 @@ Same names and behaviour as ts-utils `ansi`.
 """
 
 import re
+from collections.abc import Mapping
 
 from .offensive import require
+
+
+def color_asked(env: Mapping[str, str]) -> bool | None:
+    """What the environment says about colour, before any TTY is asked: True
+    forced on, False forced off, None for the TTY to decide. The one rule every
+    library keeps (utils' README, "Rendering"; its harness checks it), and the
+    one function both `log` and `cli` call: `FORCE_COLOR` decides when not
+    empty (`0` or `false` off, anything else on), then `NO_COLOR` not empty
+    turns it off, as does `TERM=dumb`. An empty variable is an unset one.
+    Takes the environment rather than reading it: this module reads none."""
+    force = env.get("FORCE_COLOR")
+    if force:
+        return force not in ("0", "false")
+    if env.get("NO_COLOR") or env.get("TERM") == "dumb":
+        return False
+    return None
+
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
